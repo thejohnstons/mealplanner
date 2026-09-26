@@ -67,6 +67,7 @@
   /* Buttons + fields */
   .btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border-radius:6px;font-size:14px;font-weight:500;border:1px solid var(--line);background:var(--surface)}
   .btn:hover{border-color:var(--sub)}
+  a.btn{text-decoration:none}
   .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
   .btn.primary:hover{filter:brightness(1.06)}
   .btn.small{padding:6px 12px;font-size:13px}
@@ -225,16 +226,19 @@ function planId(dateISO,meal){ return `${dateISO}__${meal}`; }
 /* ---------- PRICES (estimates) ---------- */
 const PRICE_DB = [
  {kw:['chicken breast','chicken'], price:12.00, qty:1, unit:'kg', aisle:'Meat & Seafood'},
- {kw:['beef mince','mince'], price:11.50, qty:1, unit:'kg', aisle:'Meat & Seafood'},
+ {kw:['beef mince','mince','ground beef'], price:11.50, qty:1, unit:'kg', aisle:'Meat & Seafood'},
  {kw:['bacon'], price:8.00, qty:250, unit:'g', aisle:'Meat & Seafood'},
  {kw:['salmon','fish fillet'], price:24.00, qty:1, unit:'kg', aisle:'Meat & Seafood'},
  {kw:['tinned tomato','canned tomato','crushed tomato'], price:1.60, qty:400, unit:'g', aisle:'Pantry'},
- {kw:['brown onion','onion'], price:2.90, qty:1, unit:'kg', aisle:'Produce'},
+ {kw:['spring onion','green onion','scallion'], price:2.50, qty:1, unit:'bunch', aisle:'Produce'},
+ {kw:['coriander','cilantro'], price:3.00, qty:1, unit:'bunch', aisle:'Produce'},
+ {kw:['basil'], price:3.50, qty:1, unit:'bunch', aisle:'Produce'},
+ {kw:['brown onion','yellow onion','onion'], price:2.90, qty:1, unit:'kg', aisle:'Produce'},
  {kw:['garlic'], price:1.00, qty:1, unit:'bulb', aisle:'Produce'},
  {kw:['tomato','tomatoes'], price:5.90, qty:1, unit:'kg', aisle:'Produce'},
  {kw:['potato'], price:3.50, qty:1, unit:'kg', aisle:'Produce'},
  {kw:['carrot'], price:2.20, qty:1, unit:'kg', aisle:'Produce'},
- {kw:['capsicum'], price:1.20, qty:1, unit:'each', aisle:'Produce'},
+ {kw:['capsicum','bell pepper'], price:1.20, qty:1, unit:'each', aisle:'Produce'},
  {kw:['spinach','baby spinach'], price:4.00, qty:120, unit:'g', aisle:'Produce'},
  {kw:['lettuce'], price:3.20, qty:1, unit:'each', aisle:'Produce'},
  {kw:['lemon'], price:0.80, qty:1, unit:'each', aisle:'Produce'},
@@ -335,6 +339,46 @@ function requestPhoto(id){
 }
 function photoSrc(id){ if(!id) return ''; if(id==='__pending__') return state.pendingPhoto||''; if(photoCache[id]) return photoCache[id]; requestPhoto(id); return ''; }
 
+/* ---------- ADD FROM A WEBSITE (bookmark button) ---------- */
+// The bookmark runs on the recipe page, reads the recipe details that most
+// recipe sites publish for Google (schema.org Recipe), and opens this app with
+// them in the address. Nothing is sent anywhere else.
+const BOOKMARKLET_SRC = `(function(){var A='__APP__';var r=null;function f(o){if(!o||r)return;if(Array.isArray(o)){o.forEach(f);return}if(o['@graph'])f(o['@graph']);var t=o['@type'];if(t==='Recipe'||(Array.isArray(t)&&t.indexOf('Recipe')>-1))r=o}document.querySelectorAll('script[type="application/ld+json"]').forEach(function(s){try{f(JSON.parse(s.textContent))}catch(e){}});function tx(x){if(typeof x==='string')return[x];if(x&&x.itemListElement)return[].concat.apply([],[].concat(x.itemListElement).map(tx));if(x&&x.text)return[x.text];return[]}var d;if(r){var au=r.author;au=Array.isArray(au)?au[0]:au;d={t:r.name||document.title,a:typeof au==='string'?au:(au&&au.name)||'',y:r.recipeYield||'',p:r.prepTime||'',c:r.cookTime||'',tt:r.totalTime||'',i:r.recipeIngredient||[],s:tx({itemListElement:[].concat(r.recipeInstructions||[])}),u:location.href}}else{var sel=String(getSelection()||'');if(!sel){alert('No recipe details found on this page. Select the recipe text, then tap the bookmark again.');return}d={x:sel,u:location.href}}var url=A+'#import='+encodeURIComponent(JSON.stringify(d));var w=window.open(url,'_blank');if(!w)location.href=url})();`;
+function appAddress(){ return location.origin + location.pathname; }
+function bookmarkletCode(){ return 'javascript:' + BOOKMARKLET_SRC.replace('__APP__', appAddress().replace(/'/g,"\\'")); }
+function decodeHtml(s){ const t=document.createElement('textarea'); t.innerHTML=String(s||'').replace(/<[^>]*>/g,' '); return t.value.replace(/\s+/g,' ').trim(); }
+function readImportHash(){
+  if(!location.hash.startsWith('#import=')) return;
+  try{ state.webImport = JSON.parse(decodeURIComponent(location.hash.slice(8))); }catch(e){ state.webImport = null; showError("That recipe link couldn't be read. Try the bookmark again."); }
+  try{ history.replaceState(null, '', location.pathname + location.search); }catch(e){ location.hash=''; }
+}
+function consumeWebImport(){
+  const d = state.webImport; if(!d) return;
+  state.webImport = null;
+  let draft;
+  if(d.x){
+    const parsed = parseImport(String(d.x));
+    draft = {title:parsed.title, author:parsed.author, sourceUrl:cleanUrl(d.u)||parsed.sourceUrl, time:parsed.time||'', servings:parsed.servings||4, ingredients:parsed.ingredients, steps:parsed.steps};
+  } else {
+    const y = [].concat(d.y||[]).map(String).join(' ').match(/\d+/);
+    const ings = [].concat(d.i||[]).map(decodeHtml).map(parseIngredientLine).filter(Boolean);
+    const steps = [].concat(d.s||[]).map(decodeHtml).filter(s=>s.length>1);
+    draft = {title:decodeHtml(d.t)||'Imported recipe', author:decodeHtml(d.a), sourceUrl:cleanUrl(d.u),
+      time: fmtDuration(d.tt) || [fmtDuration(d.p), fmtDuration(d.c)].filter(Boolean).join(' + '),
+      servings: y ? +y[0] : 4,
+      ingredients: ings.length ? ings : [{name:'',qty:null,unit:''}], steps: steps.length ? steps : ['']};
+  }
+  state.parsedDraft = {id:'r'+Date.now(), categories:['Dinner'], photo:null, ...draft};
+  state.pendingPhoto = null; state.tab='recipes'; state.editingRecipe='new-manual';
+  state.info = 'Recipe brought in from the website. Check the details, pick the meal type, then save.';
+}
+async function copyBookmarklet(){
+  const code = bookmarkletCode();
+  try{ await navigator.clipboard.writeText(code); state.info='Bookmark code copied. Follow the iPhone steps below to finish.'; }
+  catch(e){ state.showBookmarkCode = true; }
+  render();
+}
+
 /* ---------- BACKUP ---------- */
 async function exportBackup(){
   try{
@@ -364,14 +408,15 @@ async function importBackup(input){
 
 /* ---------- UNITS + COSTS ---------- */
 function scaleIngredient(ing, factor){
+  if(ing.qty==null || ing.qty==='' || isNaN(ing.qty)) return {name:ing.name, note:ing.note||'', qty:null, unit:''};
   let qty = ing.qty*factor, unit = ing.unit;
   if(settings.unit==='imperial'){ const c=toImperial(qty,unit); qty=c.qty; unit=c.unit; }
   else { qty = +qty.toFixed(2); }
-  return {name:ing.name, qty, unit};
+  return {name:ing.name, note:ing.note||'', qty, unit};
 }
 function ingredientCost(ing){
   const p = findPrice(ing.name);
-  if(!p) return 0;
+  if(!p || ing.qty==null || ing.qty==='' || isNaN(ing.qty)) return 0;
   let qty=ing.qty, unit=ing.unit;
   // Rough everyday equivalents so "each"/"slice"/spoon amounts cost sensibly
   const n=ing.name.toLowerCase();
@@ -412,27 +457,149 @@ function sourceLine(r){
 }
 
 /* ---------- IMPORT PARSER ---------- */
-function parseImport(text){
-  const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
-  let title='Imported Recipe', ingredients=[], steps=[], author='', sourceUrl='';
-  const qtyRe = /^([\d.\/]+)\s*(g|kg|mL|ml|L|l|cup|cups|tbsp|tsp|oz|lb|each|clove|cloves|slice|slices)?\s+(.+)$/i;
-  const stepRe = /^(\d+[\.\)]|step\s*\d+[:\.]?)\s*(.+)$/i;
-  lines.forEach((line,idx)=>{
-    let a;
-    if(/^(?:(?:source|link|url)\s*:\s*)?https?:\/\/\S+$/i.test(line)){ if(!sourceUrl) sourceUrl=cleanUrl(line.replace(/^(?:source|link|url)\s*:\s*/i,'')); return; }
-    if(!author && (a=line.match(/^(?:recipe\s+)?by[:\s]+(.{2,60})$/i) || line.match(/^(?:author|recipe from|from)\s*:\s*(.{2,60})$/i))){ author=a[1].trim(); return; }
-    if(idx===0 && !qtyRe.test(line) && !stepRe.test(line)){ title=line; return; }
-    let m;
-    if(m=line.match(stepRe)){ steps.push(m[2]); return; }
-    if(m=line.match(qtyRe)){ const qty = m[1].includes('/') ? evalFraction(m[1]) : parseFloat(m[1]); ingredients.push({name:m[3], qty:qty||1, unit:normalizeUnit(m[2])}); return; }
-    if(/^(ingredients|steps|instructions|method)\s*:?$/i.test(line)) return;
-    if(steps.length===0 && line.length<60) ingredients.push({name:line, qty:1, unit:'each'});
-    else steps.push(line);
-  });
-  return {title, author, sourceUrl, ingredients: ingredients.length?ingredients:[{name:'Add ingredients manually',qty:1,unit:'each'}], steps: steps.length?steps:['Add steps manually']};
+// Handles text copied from recipe websites (checkbox symbols, bullets, ½-style
+// fractions, spelled-out units, un-numbered steps, section headings) as well
+// as simple typed recipes.
+const UNIT_WORDS = [
+  [/^(g|gm|gms|grams?|grammes?)$/, 'g'], [/^(kg|kgs|kilos?|kilograms?)$/, 'kg'],
+  [/^(ml|mls|millilit(?:er|re)s?)$/, 'mL'], [/^(l|lit(?:er|re)s?)$/, 'L'],
+  [/^(tsp|tsps|teaspoons?|t)$/, 'tsp'], [/^(tbsp|tbsps|tbs|tbl|tablespoons?|T)$/, 'tbsp'],
+  [/^(cups?|c)$/, 'cup'], [/^(oz|ounces?)$/, 'oz'], [/^(lbs?|pounds?)$/, 'lb'],
+  [/^(cloves?)$/, 'clove'], [/^(slices?)$/, 'slice'], [/^(cans?|tins?)$/, 'can'],
+  [/^(pinch(?:es)?)$/, 'pinch'], [/^(handfuls?)$/, 'handful'], [/^(bunch(?:es)?)$/, 'bunch'],
+  [/^(sprigs?)$/, 'sprig'], [/^(stalks?|sticks?)$/, 'stalk'], [/^(packets?|packs?|packages?)$/, 'packet'],
+  [/^(pieces?|pcs?)$/, 'piece'], [/^(heads?)$/, 'head'], [/^(fillets?)$/, 'fillet'],
+  [/^(sheets?)$/, 'sheet'], [/^(dash(?:es)?)$/, 'dash'], [/^(jars?)$/, 'jar'], [/^(bottles?)$/, 'bottle'],
+  [/^(each|whole)$/, 'each'],
+];
+const FRACTIONS = {'½':'1/2','⅓':'1/3','⅔':'2/3','¼':'1/4','¾':'3/4','⅕':'1/5','⅖':'2/5','⅗':'3/5','⅘':'4/5','⅙':'1/6','⅚':'5/6','⅛':'1/8','⅜':'3/8','⅝':'5/8','⅞':'7/8'};
+function unitFor(word){
+  if(!word) return null;
+  const w = word.replace(/\.$/,'');
+  for(const [re,u] of UNIT_WORDS){ if(re.test(w) || re.test(w.toLowerCase())) return u; }
+  return null;
 }
-function evalFraction(s){ const [a,b]=s.split('/'); return +a / +b; }
-function normalizeUnit(u){ if(!u) return 'each'; u=u.toLowerCase(); if(u==='ml') return 'mL'; if(u==='l') return 'L'; return u; }
+function evalFraction(s){
+  s = String(s).trim().replace(',', '.');
+  let m;
+  if(m = s.match(/^(\d+)\s+(\d+)\/(\d+)$/)) return +m[1] + (+m[2]/+m[3]);
+  if(m = s.match(/^(\d+)\/(\d+)$/)) return +m[1] / +m[2];
+  return parseFloat(s);
+}
+function normalizeUnit(u){ return unitFor(u) || (u ? u : 'each'); }
+function roundTo(n, step){ return Math.max(step, Math.round(n/step)*step); }
+function splitNote(text){
+  let name = String(text||'').trim(), note = '';
+  const paren = name.match(/^\(([^)]*)\)\s*(.+)$/);             // "(400g) coconut milk"
+  if(paren){ name = paren[2]; note = paren[1]; }
+  const c = name.indexOf(',');
+  if(c > 0){ note = [name.slice(c+1).trim(), note].filter(Boolean).join('; '); name = name.slice(0,c).trim(); }
+  name = name.replace(/^of\s+/i,'').replace(/\s+/g,' ').trim();
+  if(!note){ // "red capsicum thinly sliced" → name + note, when the site dropped the comma
+    const pm = name.match(/^(.+?)\s+((?:(?:roughly|finely|thinly|very|freshly|lightly)\s+)?(?:deseeded|seeded|sliced|chopped|diced|minced|grated|crushed|peeled|shredded|julienned|halved|quartered|cubed|trimmed|drained|rinsed|softened|melted|beaten|divided|optional|torn|zested|juiced|to taste|to garnish|to serve|for serving|for garnish|for brushing|for frying|at room temperature|room temperature|cut into)\b.*)$/i);
+    if(pm){ name = pm[1].trim(); note = pm[2].trim(); }
+  }
+  return {name, note};
+}
+function cleanLine(line){
+  let s = String(line||'').replace(/ /g,' ');
+  s = s.replace(/^[\s▢☐□■◻◽•●◦▪·\-\*–—✓✔✅☑]+/u, '');                  // checkboxes and bullets
+  s = s.replace(/(\d)\s*([½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])/g, (m,d,f)=>d+' '+FRACTIONS[f]); // 1½ → 1 1/2
+  s = s.replace(/[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]/g, f=>FRACTIONS[f]);
+  s = s.replace(/(\d)\s*⁄\s*(\d)/g, '$1/$2');                          // fraction slash
+  return s.replace(/\s+/g,' ').trim();
+}
+function parseIngredientLine(raw){
+  const line = cleanLine(raw);
+  if(!line) return null;
+  const qm = line.match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:[.,]\d+)?)(?:\s*(?:-|–|to)\s*(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:[.,]\d+)?))?\s*(.*)$/i);
+  if(!qm){ const {name,note} = splitNote(line); return {name, note, qty:null, unit:''}; }
+  let qty = evalFraction(qm[1]);
+  let rest = qm[3] || '';
+  let unit = null;
+  const fl = rest.match(/^fl\.?\s*oz\.?\s+(.*)$/i);
+  if(fl){ unit='floz'; rest=fl[1]; }
+  else {
+    const um = rest.match(/^([A-Za-z]+\.?)(?:\s+|$)(.*)$/);
+    if(um && unitFor(um[1])){ unit = unitFor(um[1]); rest = um[2]; }
+  }
+  // Convert US weights to metric so costs and the metric/imperial toggle work
+  if(unit==='lb'){ qty = roundTo(qty*453.6, 5); unit='g'; }
+  else if(unit==='oz'){ qty = roundTo(qty*28.35, 5); unit='g'; }
+  else if(unit==='floz'){ qty = roundTo(qty*29.57, 5); unit='mL'; }
+  const {name, note} = splitNote(rest);
+  if(!name) return null;
+  return {name, note, qty: +(+qty).toFixed(3), unit: unit || 'each'};
+}
+function fmtDuration(s){
+  s = String(s||'').trim(); if(!s) return '';
+  const iso = s.match(/^P(?:T)?(?:(\d+)H)?(?:(\d+)M)?/i);
+  let h=0, m=0;
+  if(iso && (iso[1]||iso[2])){ h=+(iso[1]||0); m=+(iso[2]||0); }
+  else {
+    const hh = s.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hours?)\b/i), mm = s.match(/(\d+)\s*(?:m|min|mins|minutes?)\b/i);
+    if(!hh && !mm) return s;
+    h = hh ? +hh[1] : 0; m = mm ? +mm[1] : 0;
+  }
+  if(h%1){ m += Math.round((h%1)*60); h=Math.floor(h); }
+  return [h?`${h} hr`:'', m?`${m} min`:''].filter(Boolean).join(' ') || '';
+}
+function parseImport(text){
+  const lines = String(text||'').split(/\r?\n/).map(l=>l.replace(/ /g,' ').trim()).filter(Boolean);
+  let title='', author='', sourceUrl='', servings=null, prep='', cook='', total='';
+  const ingredients=[], steps=[];
+  const isIngHead = l => /^ingredients?\b[^a-z]{0,20}$/i.test(l) || /^ingredients?\s*(?:list)?\s*:?$/i.test(l);
+  const isStepHead = l => /^(instructions?|method|directions?|steps|preparation|how to make( it)?)\b[^a-z]{0,20}$/i.test(l);
+  const isSkipHead = l => /^(notes?|recipe notes|nutrition(?: information| facts)?|equipment|video|tips?)\b[^a-z]{0,20}$/i.test(l);
+  const isJunk = l => /^(print( recipe)?|pin( recipe)?|save( recipe)?|rate( this)?( recipe)?|jump to recipe|share|email|cook mode|prevent your screen.*|us customary|metric|\d(x|×)|[123]x\s*[123]x.*|course|cuisine|keyword|calories|servings?|yield|author|prep time|cook time|total time|rest time|equipment|video)[:\s]*$/i.test(l)
+    || /^(course|cuisine|keyword|calories|diet)\s*[:\s]/i.test(l) || /^us customary\b/i.test(l) || /^metric\s*(us customary)?$/i.test(l) || /^\d+\s*kcal$/i.test(l) || /^(\d+ )?(from )?\d+ votes?$/i.test(l) || /^click (on )?stars/i.test(l);
+  const hasHeadings = lines.some(isIngHead);
+  let mode = hasHeadings ? 'intro' : 'auto';
+  lines.forEach(raw=>{
+    const line = raw.replace(/\s+/g,' ');
+    let m;
+    if(/^(?:(?:source|link|url)\s*:\s*)?https?:\/\/\S+$/i.test(line)){ if(!sourceUrl) sourceUrl = cleanUrl(line.replace(/^(?:source|link|url)\s*:\s*/i,'')); return; }
+    const meta = mode!=='steps' && mode!=='ing';
+    if(meta && !author && (m = line.match(/^(?:recipe\s+by|author|by|recipe from)\s*[:\-]?\s+(.{2,60})$/i))){ author = m[1].trim(); return; }
+    if(meta && (m = line.match(/^(?:servings?|serves|yield|makes)\s*[:\-]?\s*(\d+)/i))){ servings = +m[1]; return; }
+    if(meta && (m = line.match(/^(prep|cook|cooking|total|ready in)\s*(?:time)?\s*[:\-]?\s*(\d.*)$/i))){ const k=m[1].toLowerCase(); if(k==='prep') prep=m[2]; else if(k.startsWith('cook')) cook=m[2]; else total=m[2]; return; }
+    if(isIngHead(line)){ mode='ing'; return; }
+    if(isStepHead(line)){ mode='steps'; return; }
+    if(isSkipHead(line)){ mode='skip'; return; }
+    if(isJunk(line)) return;
+    if(!title && mode!=='ing' && mode!=='steps' && !parseIngredientLine(line)?.qty && !/^\d+[\.\)]\s/.test(line) && line.length<90){ title = line; return; }
+    if(mode==='skip' || mode==='intro') return;
+    if(mode==='ing'){
+      if(/:$/.test(line) && line.length<40) return;                 // "For the sauce:"
+      const ing = parseIngredientLine(line); if(ing) ingredients.push(ing); return;
+    }
+    const stepText = line.replace(/^(?:step\s*)?\d+\s*[\.\):]\s*|^step\s*\d+\s*/i,'').trim();
+    if(mode==='steps'){ if(stepText.length>2) steps.push(stepText); return; }
+    // No headings: numbered lines are steps, amount lines are ingredients, short lines before steps are ingredients
+    if(/^(?:step\s*)?\d+\s*[\.\):]\s+\S/i.test(line)){ steps.push(stepText); return; }
+    const ing = parseIngredientLine(line);
+    if(ing && ing.qty!=null){ ingredients.push(ing); return; }
+    if(steps.length===0 && line.length<60 && ing){ ingredients.push(ing); return; }
+    steps.push(line);
+  });
+  return {
+    title: title || 'Imported recipe', author, sourceUrl, servings,
+    time: fmtDuration(total) || [fmtDuration(prep), fmtDuration(cook)].filter(Boolean).join(' + ') || '',
+    ingredients: ingredients.length ? ingredients : [{name:'',qty:null,unit:''}],
+    steps: steps.length ? steps : ['']
+  };
+}
+function fmtQty(q, unit){
+  if(q==null || q==='' || isNaN(q)) return '';
+  const whole = Math.floor(q), frac = q - whole;
+  if(['cup','tsp','tbsp','can','each','clove','bunch','handful','pinch','slice','piece','packet'].includes(unit) && frac>0.01){
+    const F=[[0.125,'⅛'],[0.25,'¼'],[0.333,'⅓'],[0.5,'½'],[0.667,'⅔'],[0.75,'¾']];
+    const hit=F.find(([v])=>Math.abs(frac-v)<0.04);
+    if(hit) return (whole?whole:'')+hit[1];
+  }
+  return String(+(+q).toFixed(q<10?2:0));
+}
+function amountText(s){ const q=fmtQty(s.qty, s.unit); return q ? `${q} ${s.unit==='each'?'':s.unit}`.trim() : ''; }
 
 /* ---------- GROCERY LIST ---------- */
 const MAX_RANGE_DAYS = 62;
@@ -450,12 +617,14 @@ function buildGroceryList(dates){
     const r = recipes.find(rc=>rc.id===entry.recipeId); if(!r) return;
     const factor = entry.servings/r.servings;
     (r.ingredients||[]).forEach(ing=>{
-      const key = ing.name.toLowerCase()+'|'+ing.unit;
-      if(!agg[key]) agg[key]={name:ing.name, qty:0, unit:ing.unit, aisle:guessAisle(ing.name)};
-      agg[key].qty += ing.qty*factor;
+      const noQty = ing.qty==null || ing.qty==='' || isNaN(ing.qty);
+      const unit = noQty ? '' : ing.unit;
+      const key = ing.name.toLowerCase()+'|'+unit;
+      if(!agg[key]) agg[key]={name:ing.name, qty:noQty?null:0, unit, aisle:guessAisle(ing.name)};
+      if(!noQty) agg[key].qty += ing.qty*factor;
     });
   }));
-  return Object.values(agg).map(i=>({...i, qty:+i.qty.toFixed(2)}));
+  return Object.values(agg).map(i=>({...i, qty: i.qty==null ? null : +i.qty.toFixed(2)}));
 }
 
 /* ---------- RENDER ---------- */
@@ -464,6 +633,7 @@ function render(){
   if(window.DATA && auth.status==='signedIn') DATA.watchWindow(state.weekStart, isoDate(addDays(new Date(state.weekStart+'T00:00:00'),6)), state.shopFrom, state.shopTo);
   if(!['signedIn','demo'].includes(auth.status)){ app.innerHTML = renderGate(); return; }
   const ready = loaded.recipes && loaded.plan;
+  if(ready && state.webImport) consumeWebImport();
   const st = isDemo() ? {cls:'', txt:'Demo · not saving'}
     : !sync.online ? {cls:'warn', txt:'Offline · saved on this device'}
     : sync.pending ? {cls:'', txt:'Syncing…'}
@@ -516,6 +686,17 @@ function renderSettings(){
       <div class="label">Units</div>
       <p>Ingredient amounts show in <strong>${settings.unit}</strong>. Costs always use metric prices.</p>
       <button class="btn small" onclick="toggleUnit()">Switch to ${settings.unit==='metric'?'imperial':'metric'}</button>
+    </section>
+    <section>
+      <div class="label">Add recipes from websites</div>
+      <p>Save this button as a bookmark. On any recipe page, tap it and the recipe opens here ready to check and save, with its ingredients, steps, author and link. It works on most recipe sites. If a site doesn't publish its recipe details, select the recipe text first, then tap the bookmark.</p>
+      <p class="sub"><strong>On a computer:</strong> drag this button to your bookmarks bar.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        <a class="btn small primary" href="${esc(bookmarkletCode())}" onclick="event.preventDefault();state.info='Drag this button to your bookmarks bar rather than clicking it.';render()">+ Meal Planner</a>
+        <button class="btn small" onclick="copyBookmarklet()">Copy bookmark code</button>
+      </div>
+      <p class="sub"><strong>On iPhone (Safari):</strong> tap <em>Copy bookmark code</em>. Bookmark any page (Share → Add Bookmark) and name it “+ Meal Planner”. Then open Bookmarks, tap Edit, tap that bookmark, replace its address with the copied code and tap Done. On a recipe page, open Bookmarks and tap “+ Meal Planner”.</p>
+      ${state.showBookmarkCode?`<textarea id="bm-code" class="field" rows="4" readonly onfocus="this.select()">${esc(bookmarkletCode())}</textarea><p class="sub">Your browser blocked copying. Select all of the text above and copy it.</p>`:''}
     </section>
     <section>
       <div class="label">Backup</div>
@@ -687,7 +868,7 @@ function doParse(){
     render(); return;
   }
   const parsed = parseImport(text);
-  state.parsedDraft = {id:'r'+Date.now(), title:parsed.title, author:parsed.author, sourceUrl:parsed.sourceUrl, time:'20 min', servings:4, categories:['Dinner'], ingredients:parsed.ingredients, steps:parsed.steps, photo:null};
+  state.parsedDraft = {id:'r'+Date.now(), title:parsed.title, author:parsed.author, sourceUrl:parsed.sourceUrl, time:parsed.time||'', servings:parsed.servings||4, categories:['Dinner'], ingredients:parsed.ingredients, steps:parsed.steps, photo:null};
   state.editingRecipe='new-manual'; render();
 }
 function editRecipe(id){
@@ -746,9 +927,9 @@ function renderManualForm(){
 function ingRow(i){
   i=i||{qty:'',unit:'',name:''};
   return `<div class="ing-row">
-    <input class="ing-qty field qty" value="${esc(i.qty)}" placeholder="Qty" aria-label="Quantity">
-    <input class="ing-unit field unit" value="${esc(i.unit)}" placeholder="Unit" aria-label="Unit">
-    <input class="ing-name field name" value="${esc(i.name)}" placeholder="Ingredient" aria-label="Ingredient">
+    <input class="ing-qty field qty" value="${esc(i.qty==null?'':fmtQty(i.qty,i.unit))}" placeholder="Qty" aria-label="Quantity">
+    <input class="ing-unit field unit" value="${esc(i.qty==null?'':(i.unit||''))}" placeholder="Unit" aria-label="Unit">
+    <input class="ing-name field name" value="${esc(i.name + (i.note ? ', '+i.note : ''))}" placeholder="Ingredient" aria-label="Ingredient">
     <button onclick="this.parentElement.remove()" class="icon-btn" style="align-self:center" aria-label="Remove ingredient">×</button>
   </div>`;
 }
@@ -806,7 +987,13 @@ async function saveManual(id){
   const servings=Math.max(1, +document.getElementById('f_servings').value||1);
   const categories=[...document.querySelectorAll('.f_cat_box')].filter(cb=>cb.checked).map(cb=>cb.value);
   const qtys=[...document.querySelectorAll('.ing-qty')], units=[...document.querySelectorAll('.ing-unit')], names=[...document.querySelectorAll('.ing-name')];
-  const ingredients = names.map((n,i)=>({name:n.value.trim(), qty:parseFloat(qtys[i].value)||1, unit:units[i].value.trim()||'each'})).filter(i=>i.name);
+  const ingredients = names.map((n,i)=>{
+    const {name, note} = splitNote(n.value);
+    const qRaw = cleanLine(qtys[i].value);
+    const q = qRaw ? evalFraction(qRaw) : NaN;
+    const hasQty = !isNaN(q) && q>0;
+    return {name, note, qty: hasQty ? +q.toFixed(3) : null, unit: hasQty ? (normalizeUnit(units[i].value.trim())) : ''};
+  }).filter(i=>i.name);
   const steps = document.getElementById('f_steps').value.split('\n').map(s=>s.trim()).filter(Boolean);
   const existing = recipes.find(r=>r.id===id);
   const oldPhoto = existing && existing.photo || null;
@@ -859,7 +1046,7 @@ function renderRecipeDetail(id){
     <div>
       <h3 class="col-title">Ingredients</h3>
       <ul class="ing-list">
-        ${(r.ingredients||[]).map(i=>{const s=scaleIngredient(i,factor); return `<li><span class="q num">${s.qty} ${esc(s.unit)}</span><span>${esc(s.name)}</span></li>`}).join('')}
+        ${(r.ingredients||[]).map(i=>{const s=scaleIngredient(i,factor); return `<li><span class="q num">${esc(amountText(s))}</span><span>${esc(s.name)}${s.note?`<span class="sub">, ${esc(s.note)}</span>`:''}</span></li>`}).join('')}
       </ul>
     </div>
     <div>
@@ -903,7 +1090,7 @@ function activePreset(){
   if(state.shopFrom===today && state.shopTo===plus(today,6)) return '7';
   return '';
 }
-function itemLine(i){ const s=scaleIngredient(i,1); return `${i.name} (${s.qty} ${s.unit})`; }
+function itemLine(i){ const s=scaleIngredient(i,1); const a=amountText(s); return a ? `${i.name} (${a})` : i.name; }
 function buildExportText(list){
   const lines=[];
   sortedAisles(list).forEach(a=>{
@@ -974,7 +1161,7 @@ function renderGrocery(){
           const k=checkKey(i); const checked=!!groceryChecks[k]; const s=scaleIngredient(i,1);
           return `<label class="gitem ${checked?'done':''}">
             <input type="checkbox" id="chk-${k}" ${checked?'checked':''} onchange="putCheck('${k}',this.checked)">
-            <span class="q num">${s.qty} ${esc(s.unit)}</span><span class="txt">${esc(s.name)}</span>
+            <span class="q num">${esc(amountText(s))}</span><span class="txt">${esc(s.name)}</span>
             <span class="p num">$${ingredientCost(i).toFixed(2)}</span>
           </label>`;
         }).join('')}
@@ -995,6 +1182,8 @@ function renderGrocery(){
   if(!c.apiKey || String(c.apiKey).includes('PASTE')){ auth.status='noConfig'; return; }
   setTimeout(()=>{ if(auth.status==='loading'){ auth.status='signedOut'; auth.error="Couldn't reach the sign-in service. Check your internet connection and reload."; render(); } }, 15000);
 })();
+readImportHash();
+window.addEventListener('hashchange',()=>{ readImportHash(); render(); });
 window.addEventListener('online',()=>onSync({online:true}));
 window.addEventListener('offline',()=>onSync({online:false}));
 render();
