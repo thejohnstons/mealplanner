@@ -116,6 +116,8 @@
   .tags{display:flex;gap:10px;flex-wrap:wrap}
   .meta{font-size:13px;color:var(--sub)}
   .price{font-size:13px;color:var(--accent);font-weight:500}
+  .source{font-family:var(--serif);font-style:italic;font-size:19px;margin-bottom:4px}
+  .srclink{font-family:var(--sans);font-style:normal;font-size:14px;color:var(--accent);border-bottom:1px solid currentColor}
 
   /* Recipe detail */
   .back{font-size:14px;color:var(--sub);margin-bottom:18px;display:inline-block}
@@ -317,7 +319,8 @@ function write(remote, local){
     });
   }catch(e){ showError("Couldn't save that change."); }
 }
-function putRecipe(r){ write(()=>DATA.setRecipe(r), ()=>{ const i=recipes.findIndex(x=>x.id===r.id); if(i>=0) recipes[i]=r; else recipes.push(r); }); }
+function upsertLocal(r){ const i=recipes.findIndex(x=>x.id===r.id); if(i>=0) recipes[i]=r; else recipes.push(r); }
+function putRecipe(r){ if(!isDemo() && window.DATA) upsertLocal(r); write(()=>DATA.setRecipe(r), ()=>upsertLocal(r)); }
 function removeRecipe(id){ write(()=>DATA.deleteRecipe(id), ()=>{ recipes=recipes.filter(r=>r.id!==id); }); }
 function putPlan(key,entry){ write(()=>DATA.setPlan(key,entry), ()=>{ plan[key]=entry; }); }
 function removePlan(key){ write(()=>DATA.deletePlan(key), ()=>{ delete plan[key]; }); }
@@ -393,13 +396,31 @@ function recipeCost(recipe, servingsOverride){
   return {total, perServe: total/serv};
 }
 
+/* ---------- RECIPE SOURCE (author + link) ---------- */
+function cleanUrl(u){
+  u=String(u||'').trim(); if(!u) return '';
+  if(!/^https?:\/\//i.test(u)){ if(/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(u)) u='https://'+u; else return ''; }
+  try{ const x=new URL(u); return (x.protocol==='https:'||x.protocol==='http:') ? x.href : ''; }catch(e){ return ''; }
+}
+function urlHost(u){ try{ return new URL(u).hostname.replace(/^www\./,''); }catch(e){ return ''; } }
+function sourceLine(r){
+  const parts=[];
+  if(r.author) parts.push(`By ${esc(r.author)}`);
+  const u=cleanUrl(r.sourceUrl);
+  if(u) parts.push(`<a href="${esc(u)}" target="_blank" rel="noopener noreferrer" class="srclink">${esc(urlHost(u)||'Original recipe')} ↗</a>`);
+  return parts.join(' · ');
+}
+
 /* ---------- IMPORT PARSER ---------- */
 function parseImport(text){
   const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
-  let title='Imported Recipe', ingredients=[], steps=[];
+  let title='Imported Recipe', ingredients=[], steps=[], author='', sourceUrl='';
   const qtyRe = /^([\d.\/]+)\s*(g|kg|mL|ml|L|l|cup|cups|tbsp|tsp|oz|lb|each|clove|cloves|slice|slices)?\s+(.+)$/i;
   const stepRe = /^(\d+[\.\)]|step\s*\d+[:\.]?)\s*(.+)$/i;
   lines.forEach((line,idx)=>{
+    let a;
+    if(/^(?:(?:source|link|url)\s*:\s*)?https?:\/\/\S+$/i.test(line)){ if(!sourceUrl) sourceUrl=cleanUrl(line.replace(/^(?:source|link|url)\s*:\s*/i,'')); return; }
+    if(!author && (a=line.match(/^(?:recipe\s+)?by[:\s]+(.{2,60})$/i) || line.match(/^(?:author|recipe from|from)\s*:\s*(.{2,60})$/i))){ author=a[1].trim(); return; }
     if(idx===0 && !qtyRe.test(line) && !stepRe.test(line)){ title=line; return; }
     let m;
     if(m=line.match(stepRe)){ steps.push(m[2]); return; }
@@ -408,7 +429,7 @@ function parseImport(text){
     if(steps.length===0 && line.length<60) ingredients.push({name:line, qty:1, unit:'each'});
     else steps.push(line);
   });
-  return {title, ingredients: ingredients.length?ingredients:[{name:'Add ingredients manually',qty:1,unit:'each'}], steps: steps.length?steps:['Add steps manually']};
+  return {title, author, sourceUrl, ingredients: ingredients.length?ingredients:[{name:'Add ingredients manually',qty:1,unit:'each'}], steps: steps.length?steps:['Add steps manually']};
 }
 function evalFraction(s){ const [a,b]=s.split('/'); return +a / +b; }
 function normalizeUnit(u){ if(!u) return 'each'; u=u.toLowerCase(); if(u==='ml') return 'mL'; if(u==='l') return 'L'; return u; }
@@ -637,6 +658,7 @@ function renderRecipes(){
       <div class="photo">${photoBox(r)}</div>
       <div class="tags">${(r.categories||[]).map(c=>`<span class="label">${c}</span>`).join('')}</div>
       <h3>${esc(r.title)}</h3>
+      ${r.author?`<div class="meta">By ${esc(r.author)}</div>`:''}
       <div class="meta">${esc(r.time)} · serves ${r.servings} · ${r.lastPlanned?`last planned ${fmtPlanned(r.lastPlanned)}`:'not planned yet'}</div>
       <div class="price num">$${c.perServe.toFixed(2)} a serve</div>
     </button>`}).join('')}
@@ -659,11 +681,13 @@ function doParse(){
   const text = document.getElementById('importBox').value;
   state.importText = text;
   if(/^\s*https?:\/\/\S+\s*$/i.test(text)){
-    showError("The app can't open web links itself. Open the recipe page, select and copy the recipe text, then paste it here.");
-    return;
+    state.parsedDraft = {id:'r'+Date.now(), title:'', author:'', sourceUrl:cleanUrl(text), time:'20 min', servings:4, categories:['Dinner'], ingredients:[{name:'',qty:'',unit:''}], steps:[''], photo:null};
+    state.editingRecipe='new-manual';
+    state.info="Link saved. The app can't read web pages itself, so add the name, ingredients and steps (or go back and paste the recipe text along with the link).";
+    render(); return;
   }
   const parsed = parseImport(text);
-  state.parsedDraft = {id:'r'+Date.now(), title:parsed.title, time:'20 min', servings:4, categories:['Dinner'], ingredients:parsed.ingredients, steps:parsed.steps, photo:null};
+  state.parsedDraft = {id:'r'+Date.now(), title:parsed.title, author:parsed.author, sourceUrl:parsed.sourceUrl, time:'20 min', servings:4, categories:['Dinner'], ingredients:parsed.ingredients, steps:parsed.steps, photo:null};
   state.editingRecipe='new-manual'; render();
 }
 function editRecipe(id){
@@ -696,6 +720,10 @@ function renderManualForm(){
     <div class="grid2">
       <label><span class="label">Time</span><input id="f_time" value="${esc(d.time)}" placeholder="e.g. 30 min" class="field" style="margin-top:6px"></label>
       <label><span class="label">Serves</span><input id="f_servings" type="number" value="${d.servings}" min="1" class="field" style="margin-top:6px"></label>
+    </div>
+    <div class="grid2">
+      <label><span class="label">Author or source</span><input id="f_author" value="${esc(d.author||'')}" placeholder="e.g. Nagi Maehashi, Nana" class="field" style="margin-top:6px"></label>
+      <label><span class="label">Web link</span><input id="f_url" type="url" inputmode="url" value="${esc(d.sourceUrl||'')}" placeholder="https://…" class="field" style="margin-top:6px"></label>
     </div>
     <div>
       <div class="label" style="margin-bottom:8px">Meal</div>
@@ -773,6 +801,8 @@ function removePhoto(){ state.pendingPhoto=null; state.parsedDraft.photo=null; s
 async function saveManual(id){
   const title=document.getElementById('f_title').value.trim()||'Untitled';
   const time=document.getElementById('f_time').value.trim();
+  const author=document.getElementById('f_author').value.trim();
+  const sourceUrl=cleanUrl(document.getElementById('f_url').value);
   const servings=Math.max(1, +document.getElementById('f_servings').value||1);
   const categories=[...document.querySelectorAll('.f_cat_box')].filter(cb=>cb.checked).map(cb=>cb.value);
   const qtys=[...document.querySelectorAll('.ing-qty')], units=[...document.querySelectorAll('.ing-unit')], names=[...document.querySelectorAll('.ing-name')];
@@ -787,7 +817,7 @@ async function saveManual(id){
     const data = state.pendingPhoto;
     write(()=>DATA.setPhoto(photo, data, id), ()=>{});
   } else if(photo==='__pending__') photo = oldPhoto;
-  const rec = {id, title, time, servings, categories: categories.length?categories:['Dinner'], lastPlanned: existing?existing.lastPlanned:null, ingredients, steps, photo};
+  const rec = {id, title, author, sourceUrl, time, servings, categories: categories.length?categories:['Dinner'], lastPlanned: existing?existing.lastPlanned:null, ingredients, steps, photo};
   state.pendingPhoto=null; state.editingRecipe=id; state.parsedDraft=null;
   putRecipe(rec);
   if(oldPhoto && oldPhoto!==photo) dropAsset(oldPhoto);
@@ -808,6 +838,7 @@ function renderRecipeDetail(id){
     <div>
       <div class="tags" style="margin-bottom:6px">${(r.categories||[]).map(c=>`<span class="label">${c}</span>`).join('')}</div>
       <h2>${esc(r.title)}</h2>
+      ${sourceLine(r)?`<div class="source">${sourceLine(r)}</div>`:''}
       <div class="meta">${esc(r.time)} · ${r.lastPlanned?`last planned ${fmtPlanned(r.lastPlanned)}`:'not planned yet'}</div>
     </div>
     <div class="actions">
