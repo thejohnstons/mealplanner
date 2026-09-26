@@ -223,7 +223,7 @@ function fmtWeekRange(monday){
 function weekDates(){ const monday=new Date(state.weekStart+'T00:00:00'); return [...Array(7)].map((_,i)=>isoDate(addDays(monday,i))); }
 function planId(dateISO,meal){ return `${dateISO}__${meal}`; }
 
-/* ---------- PRICES (estimates) ---------- */
+/* ---------- AISLE LOOKUP (groups the shopping list) ---------- */
 const PRICE_DB = [
  {kw:['chicken breast','chicken'], price:12.00, qty:1, unit:'kg', aisle:'Meat & Seafood'},
  {kw:['beef mince','mince','ground beef'], price:11.50, qty:1, unit:'kg', aisle:'Meat & Seafood'},
@@ -260,8 +260,6 @@ const PRICE_DB = [
 ];
 function findPrice(name){ const n=name.toLowerCase(); return PRICE_DB.find(p=>p.kw.some(k=>n.includes(k))); }
 function guessAisle(name){ const p=findPrice(name); return p?p.aisle:'Other'; }
-const CONV = { g:['oz',0.035274], kg:['lb',2.20462], mL:['fl oz',0.033814], L:['cups',4.16667] };
-function toImperial(qty,unit){ if(CONV[unit]) return {qty:+(qty*CONV[unit][1]).toFixed(2), unit:CONV[unit][0]}; return {qty,unit}; }
 
 function loadLS(k,def){ try{ return JSON.parse(localStorage.getItem(k))??def; }catch(e){ return def; } }
 function saveLS(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -410,37 +408,9 @@ async function importBackup(input){
 function scaleIngredient(ing, factor){
   if(ing.qty==null || ing.qty==='' || isNaN(ing.qty)) return {name:ing.name, note:ing.note||'', qty:null, unit:''};
   let qty = ing.qty*factor, unit = ing.unit;
-  if(settings.unit==='imperial'){ const c=toImperial(qty,unit); qty=c.qty; unit=c.unit; }
-  else { qty = +qty.toFixed(2); }
+  qty = +qty.toFixed(2);
   return {name:ing.name, note:ing.note||'', qty, unit};
 }
-function ingredientCost(ing){
-  const p = findPrice(ing.name);
-  if(!p || ing.qty==null || ing.qty==='' || isNaN(ing.qty)) return 0;
-  let qty=ing.qty, unit=ing.unit;
-  // Rough everyday equivalents so "each"/"slice"/spoon amounts cost sensibly
-  const n=ing.name.toLowerCase();
-  const EQUIV=[
-    [['onion'],'each','kg',0.15],[['potato'],'each','kg',0.2],[['carrot'],'each','kg',0.12],[['tomato'],'each','kg',0.12],
-    [['bread'],'slice','loaf',1/20],[['garlic'],'clove','bulb',1/10],
-    [[''],'tbsp','mL',15],[[''],'tsp','mL',5],[[''],'cup','mL',250],[[''],'cups','mL',250]
-  ];
-  for(const [kws,from,to,f] of EQUIV){
-    if(unit===from && kws.some(k=>n.includes(k)) && (p.unit===to || (to==='mL'&&p.unit==='L') || (to==='kg'&&p.unit==='g'))){ qty=qty*f; unit=to; break; }
-  }
-  if(unit==='kg'&&p.unit==='g') qty=qty*1000;
-  if(unit==='g'&&p.unit==='kg') qty=qty/1000;
-  if(unit==='L'&&p.unit==='mL') qty=qty*1000;
-  if(unit==='mL'&&p.unit==='L') qty=qty/1000;
-  return (qty/p.qty)*p.price;
-}
-function recipeCost(recipe, servingsOverride){
-  const serv = servingsOverride||recipe.servings;
-  const factor = serv/recipe.servings;
-  const total = (recipe.ingredients||[]).reduce((s,i)=>s+ingredientCost({...i, qty:i.qty*factor}),0);
-  return {total, perServe: total/serv};
-}
-
 /* ---------- RECIPE SOURCE (author + link) ---------- */
 function cleanUrl(u){
   u=String(u||'').trim(); if(!u) return '';
@@ -523,7 +493,7 @@ function parseIngredientLine(raw){
     const um = rest.match(/^([A-Za-z]+\.?)(?:\s+|$)(.*)$/);
     if(um && unitFor(um[1])){ unit = unitFor(um[1]); rest = um[2]; }
   }
-  // Convert US weights to metric so costs and the metric/imperial toggle work
+  // Convert US weights (lb, oz) to grams; cups and spoons stay as written
   if(unit==='lb'){ qty = roundTo(qty*453.6, 5); unit='g'; }
   else if(unit==='oz'){ qty = roundTo(qty*28.35, 5); unit='g'; }
   else if(unit==='floz'){ qty = roundTo(qty*29.57, 5); unit='mL'; }
@@ -642,11 +612,10 @@ function render(){
   <header class="mast">
     <div>
       <h1>Johnston’s Meal Planner</h1>
-      <p class="sub">Weekly plan, family recipes and the shopping list, with Woolworths SA cost estimates.</p>
+      <p class="sub">Weekly plan, family recipes and the shopping list.</p>
     </div>
     <div class="mast-tools">
       <span class="status"><span class="dot ${st.cls}"></span>${st.txt}</span>
-      <button class="linkish" onclick="toggleUnit()" title="Switch units">${settings.unit==='metric'?'Metric':'Imperial'} ⇄</button>
     </div>
   </header>
   <nav class="tabs">
@@ -683,11 +652,6 @@ function renderSettings(){
         :`<p>Signed in as <strong>${esc(auth.email)}</strong></p><button class="btn small" onclick="DATA.signOut()">Sign out</button>`}
     </section>
     <section>
-      <div class="label">Units</div>
-      <p>Ingredient amounts show in <strong>${settings.unit}</strong>. Costs always use metric prices.</p>
-      <button class="btn small" onclick="toggleUnit()">Switch to ${settings.unit==='metric'?'imperial':'metric'}</button>
-    </section>
-    <section>
       <div class="label">Add recipes from websites</div>
       <p>Save this button as a bookmark. On any recipe page, tap it and the recipe opens here ready to check and save, with its ingredients, steps, author and link. It works on most recipe sites. If a site doesn't publish its recipe details, select the recipe text first, then tap the bookmark.</p>
       <p class="sub"><strong>On a computer:</strong> drag this button to your bookmarks bar.</p>
@@ -714,7 +678,6 @@ function renderSettings(){
   </div>`;
 }
 function renderLoading(){ return `<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:80px 0"><div class="spinner"></div><p class="sub">Loading your meal plan…</p></div>`; }
-function toggleUnit(){ settings.unit = settings.unit==='metric'?'imperial':'metric'; saveLS(LS_S,settings); render(); }
 function setTab(t){ state.pendingPhoto=null; state.tab=t; state.editingRecipe=null; state.parsedDraft=null; render(); }
 function leaveForm(target){ state.pendingPhoto=null; state.editingRecipe=target; state.parsedDraft=null; render(); }
 
@@ -723,11 +686,6 @@ function renderPlanner(){
   const dates = weekDates();
   const monday = new Date(state.weekStart+'T00:00:00');
   const today = isoDate(new Date());
-  let weekTotal=0;
-  dates.forEach(dateISO=>MEALS.forEach(m=>{
-    const e=plan[planId(dateISO,m)];
-    if(e){ const r=recipes.find(rc=>rc.id===e.recipeId); if(r) weekTotal+=recipeCost(r,e.servings).total; }
-  }));
   return `
   <div class="weekbar">
     <div class="weeknav">
@@ -739,7 +697,6 @@ function renderPlanner(){
     </div>
     <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
       <button onclick="copyLastWeek()" class="btn small">Copy last week</button>
-      <div class="weektotal"><div class="label">Estimated</div><div class="amt num">$${weekTotal.toFixed(2)}</div></div>
     </div>
   </div>
   <div class="days">
@@ -751,7 +708,7 @@ function renderPlanner(){
       ${MEALS.map(m=>{
         const key=planId(dateISO,m); const e=plan[key]; const r=e&&recipes.find(rc=>rc.id===e.recipeId);
         const tagged = recipes.filter(rc=>(rc.categories||[]).includes(m));
-        const optionList = (tagged.length?tagged:recipes).slice().sort((a,b)=>a.title.localeCompare(b.title));
+        const optionList = tagged.slice().sort((a,b)=>a.title.localeCompare(b.title));
         return `<div class="meal">
           <div class="label">${m}</div>
           ${r? `
@@ -760,11 +717,10 @@ function renderPlanner(){
               <button onclick="changeServ('${key}',-1)" class="icon-btn" style="width:22px;height:22px;font-size:12px" aria-label="Fewer serves">−</button>
               <span class="num">${e.servings} serve${e.servings>1?'s':''}</span>
               <button onclick="changeServ('${key}',1)" class="icon-btn" style="width:22px;height:22px;font-size:12px" aria-label="More serves">+</button>
-              <span class="sub num">· $${recipeCost(r,e.servings).total.toFixed(2)}</span>
               <button onclick="clearSlot('${key}')" class="remove">Remove</button>
             </div>
           ` : `<select id="sel-${key}" onchange="assignSlot('${dateISO}','${m}',this.value)" class="field" aria-label="Add a recipe for ${m}">
-              <option value="">Add a recipe…</option>
+              <option value="">${optionList.length?'Add a recipe…':`No ${m.toLowerCase().replace(/s$/,"")} recipes yet`}</option>
               ${optionList.map(rc=>`<option value="${rc.id}">${esc(rc.title)}</option>`).join('')}
             </select>`}
         </div>`;
@@ -834,14 +790,13 @@ function renderRecipes(){
   </div>
   ${list.length===0?`<p class="empty">No recipes here yet.</p>`:''}
   <div class="cards">
-  ${list.map(r=>{const c=recipeCost(r);return `
+  ${list.map(r=>{return `
     <button class="rcard" onclick="state.editingRecipe='${r.id}';render();window.scrollTo(0,0)">
       <div class="photo">${photoBox(r)}</div>
       <div class="tags">${(r.categories||[]).map(c=>`<span class="label">${c}</span>`).join('')}</div>
       <h3>${esc(r.title)}</h3>
       ${r.author?`<div class="meta">By ${esc(r.author)}</div>`:''}
       <div class="meta">${esc(r.time)} · serves ${r.servings} · ${r.lastPlanned?`last planned ${fmtPlanned(r.lastPlanned)}`:'not planned yet'}</div>
-      <div class="price num">$${c.perServe.toFixed(2)} a serve</div>
     </button>`}).join('')}
   </div>`;
 }
@@ -1016,7 +971,6 @@ function renderRecipeDetail(id){
   if(!r) { state.editingRecipe=null; return renderRecipes(); }
   const serv = state.viewServ && state.viewServ.id===id ? state.viewServ.n : r.servings;
   const factor = serv/r.servings;
-  const cost = recipeCost(r,serv);
   const confirming = state.confirmDelete===id;
   return `
   <button onclick="state.editingRecipe=null;state.confirmDelete=null;render()" class="back">← Recipes</button>
@@ -1040,7 +994,6 @@ function renderRecipeDetail(id){
     <button onclick="setViewServ('${r.id}',${serv-1})" class="icon-btn" aria-label="Fewer serves">−</button>
     <span class="n num">${serv}</span>
     <button onclick="setViewServ('${r.id}',${serv+1})" class="icon-btn" aria-label="More serves">+</button>
-    <span class="cost num">$${cost.total.toFixed(2)} · $${cost.perServe.toFixed(2)} a serve</span>
   </div>
   <div class="two-col">
     <div>
@@ -1131,7 +1084,6 @@ function renderGrocery(){
   const dates = shopDates();
   const list = buildGroceryList(dates);
   const aisles = sortedAisles(list);
-  let total=0; list.forEach(i=>{ total += ingredientCost(i); });
   const meals = countMeals(dates);
   const preset = activePreset();
   const heading = dates.length===7 && preset==='week' ? 'This week’s shop' : `${dates.length}-day shop`;
@@ -1151,7 +1103,6 @@ function renderGrocery(){
   <div class="sheet">
     <div class="sheet-head">
       <div><div class="label">${fmtShort(new Date(state.shopFrom+'T00:00:00'))} – ${fmtShort(new Date(state.shopTo+'T00:00:00'))}</div><h2>${heading}</h2></div>
-      <div style="text-align:right"><div class="label">Estimated</div><div class="amt num">$${total.toFixed(2)}</div></div>
     </div>
     ${list.length===0?`<p class="empty" style="margin-top:22px">No meals planned in these dates yet.</p>`:''}
     ${aisles.map(a=>`
@@ -1162,7 +1113,6 @@ function renderGrocery(){
           return `<label class="gitem ${checked?'done':''}">
             <input type="checkbox" id="chk-${k}" ${checked?'checked':''} onchange="putCheck('${k}',this.checked)">
             <span class="q num">${esc(amountText(s))}</span><span class="txt">${esc(s.name)}</span>
-            <span class="p num">$${ingredientCost(i).toFixed(2)}</span>
           </label>`;
         }).join('')}
       </div>`).join('')}
@@ -1173,7 +1123,7 @@ function renderGrocery(){
         <span class="sub" style="font-size:13px">Ticked items are left out.</span>
       </div>
       ${renderExportTip()}
-      <p class="fine">Prices are rough estimates, not live Woolworths prices. Items without a match show $0.00.</p>`:''}
+`:''}
   </div>`;
 }
 
