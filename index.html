@@ -95,6 +95,8 @@
   .meal:last-child{border-bottom:0}
   .meal-title{font-family:var(--serif);font-size:19px;font-weight:600;line-height:1.2;text-align:left;margin-top:2px}
   .meal-title:hover{color:var(--accent)}
+  .meal-item + .meal-item{margin-top:10px}
+  .meal-item + select.field, .meal-item + .field{margin-top:10px}
   .meal-row{display:flex;align-items:center;gap:8px;margin-top:6px;font-size:13px}
   .remove{margin-left:auto;font-size:12px;color:var(--sub)}
   .remove:hover{color:var(--danger)}
@@ -203,7 +205,8 @@
 <script>
 /* ---------- CONSTANTS ---------- */
 const LS_S='smp_settings';
-const MEALS=['Breakfast','Lunch','Dinner','Snacks'];
+const MEALS=['Breakfast','Lunch','Dinner','Dessert','Snacks'];
+const MULTI_MEALS=['Snacks']; // meals that can hold more than one recipe a day
 const DAY_NAMES=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 
 /* ---------- HELPERS ---------- */
@@ -222,6 +225,19 @@ function fmtWeekRange(monday){
 }
 function weekDates(){ const monday=new Date(state.weekStart+'T00:00:00'); return [...Array(7)].map((_,i)=>isoDate(addDays(monday,i))); }
 function planId(dateISO,meal){ return `${dateISO}__${meal}`; }
+// Every planned entry for one meal on one day: [key, entry] pairs. Extra snacks
+// use keys like "2026-09-28__Snacks__2".
+function slotEntries(dateISO, meal, src){
+  src = src || plan; const base = planId(dateISO, meal);
+  return Object.keys(src).filter(k=>k===base || k.startsWith(base+'__'))
+    .sort((a,b)=>(+(a.split('__')[2]||1))-(+(b.split('__')[2]||1)))
+    .map(k=>[k, src[k]]);
+}
+function nextSlotKey(dateISO, meal){
+  const base = planId(dateISO, meal);
+  if(!MULTI_MEALS.includes(meal) || !plan[base]) return base;
+  let n=2; while(plan[base+'__'+n]) n++; return base+'__'+n;
+}
 
 /* ---------- AISLE LOOKUP (groups the shopping list) ---------- */
 const PRICE_DB = [
@@ -579,11 +595,11 @@ function rangeDates(from,to){
   while(d<=end && out.length<MAX_RANGE_DAYS){ out.push(isoDate(d)); d=addDays(d,1); }
   return out;
 }
-function countMeals(dates){ let n=0; dates.forEach(dt=>MEALS.forEach(m=>{ const e=plan[planId(dt,m)]; if(e && recipes.some(r=>r.id===e.recipeId)) n++; })); return n; }
+function countMeals(dates){ let n=0; dates.forEach(dt=>MEALS.forEach(m=>{ slotEntries(dt,m).forEach(([k,e])=>{ if(e && recipes.some(r=>r.id===e.recipeId)) n++; }); })); return n; }
 function buildGroceryList(dates){
   const agg = {};
-  (dates||weekDates()).forEach(dateISO=>MEALS.forEach(m=>{
-    const entry = plan[planId(dateISO,m)]; if(!entry) return;
+  (dates||weekDates()).forEach(dateISO=>MEALS.forEach(m=>slotEntries(dateISO,m).forEach(([k,entry])=>{
+    if(!entry) return;
     const r = recipes.find(rc=>rc.id===entry.recipeId); if(!r) return;
     const factor = entry.servings/r.servings;
     (r.ingredients||[]).forEach(ing=>{
@@ -593,7 +609,7 @@ function buildGroceryList(dates){
       if(!agg[key]) agg[key]={name:ing.name, qty:noQty?null:0, unit, aisle:guessAisle(ing.name)};
       if(!noQty) agg[key].qty += ing.qty*factor;
     });
-  }));
+  })));
   return Object.values(agg).map(i=>({...i, qty: i.qty==null ? null : +i.qty.toFixed(2)}));
 }
 
@@ -706,23 +722,27 @@ function renderPlanner(){
     <section class="day ${isToday?'today':''}">
       <div class="day-head"><span class="day-name">${DAY_NAMES[i]}</span><span class="label">${isToday?'Today · ':''}${fmtShort(d)}</span></div>
       ${MEALS.map(m=>{
-        const key=planId(dateISO,m); const e=plan[key]; const r=e&&recipes.find(rc=>rc.id===e.recipeId);
-        const tagged = recipes.filter(rc=>(rc.categories||[]).includes(m));
-        const optionList = tagged.slice().sort((a,b)=>a.title.localeCompare(b.title));
+        const entries = slotEntries(dateISO,m).map(([k,e])=>[k,e,recipes.find(rc=>rc.id===e.recipeId)]).filter(x=>x[2]);
+        const multi = MULTI_MEALS.includes(m);
+        const optionList = recipes.filter(rc=>(rc.categories||[]).includes(m)).sort((a,b)=>a.title.localeCompare(b.title));
+        const single = m.toLowerCase().replace(/s$/,'');
+        const showPicker = multi || entries.length===0;
         return `<div class="meal">
           <div class="label">${m}</div>
-          ${r? `
-            <button onclick="openRecipe('${r.id}')" class="meal-title">${esc(r.title)}</button>
-            <div class="meal-row">
-              <button onclick="changeServ('${key}',-1)" class="icon-btn" style="width:22px;height:22px;font-size:12px" aria-label="Fewer serves">−</button>
-              <span class="num">${e.servings} serve${e.servings>1?'s':''}</span>
-              <button onclick="changeServ('${key}',1)" class="icon-btn" style="width:22px;height:22px;font-size:12px" aria-label="More serves">+</button>
-              <button onclick="clearSlot('${key}')" class="remove">Remove</button>
-            </div>
-          ` : `<select id="sel-${key}" onchange="assignSlot('${dateISO}','${m}',this.value)" class="field" aria-label="Add a recipe for ${m}">
-              <option value="">${optionList.length?'Add a recipe…':`No ${m.toLowerCase().replace(/s$/,"")} recipes yet`}</option>
+          ${entries.map(([key,e,r])=>`
+            <div class="meal-item">
+              <button onclick="openRecipe('${r.id}')" class="meal-title">${esc(r.title)}</button>
+              <div class="meal-row">
+                <button onclick="changeServ('${key}',-1)" class="icon-btn" style="width:22px;height:22px;font-size:12px" aria-label="Fewer serves">−</button>
+                <span class="num">${e.servings} serve${e.servings>1?'s':''}</span>
+                <button onclick="changeServ('${key}',1)" class="icon-btn" style="width:22px;height:22px;font-size:12px" aria-label="More serves">+</button>
+                <button onclick="clearSlot('${key}')" class="remove">Remove</button>
+              </div>
+            </div>`).join('')}
+          ${showPicker ? `<select id="sel-${planId(dateISO,m)}" onchange="assignSlot('${dateISO}','${m}',this.value)" class="field" aria-label="Add a ${single} recipe">
+              <option value="">${optionList.length ? (multi && entries.length ? `Add another ${single}…` : 'Add a recipe…') : `No ${single} recipes yet`}</option>
               ${optionList.map(rc=>`<option value="${rc.id}">${esc(rc.title)}</option>`).join('')}
-            </select>`}
+            </select>` : ''}
         </div>`;
       }).join('')}
     </section>`;
@@ -742,8 +762,11 @@ async function copyLastWeek(){
   for(let i=0;i<7;i++){
     const prev = isoDate(addDays(new Date(cur[i]+'T00:00:00'),-7));
     for(const m of MEALS){
-      const pe = prevPlan[planId(prev,m)]; const ck = planId(cur[i],m);
-      if(pe && !plan[ck]){ putPlan(ck, {date:cur[i], meal:m, recipeId:pe.recipeId, servings:pe.servings}); n++; }
+      const prevBase = planId(prev,m), curBase = planId(cur[i],m);
+      for(const [pk, pe] of slotEntries(prev, m, prevPlan)){
+        const ck = curBase + pk.slice(prevBase.length);
+        if(pe && !plan[ck]){ putPlan(ck, {date:cur[i], meal:m, recipeId:pe.recipeId, servings:pe.servings}); n++; }
+      }
     }
   }
   if(!n){ state.info='Nothing to copy. Last week was empty, or those slots are already filled.'; render(); }
@@ -751,7 +774,7 @@ async function copyLastWeek(){
 async function assignSlot(dateISO,meal,recipeId){
   if(!recipeId) return;
   const r=recipes.find(rc=>rc.id===recipeId); if(!r) return;
-  await putPlan(planId(dateISO,meal), {date:dateISO, meal, recipeId, servings:r.servings});
+  await putPlan(nextSlotKey(dateISO,meal), {date:dateISO, meal, recipeId, servings:r.servings});
   if(!r.lastPlanned || dateISO>r.lastPlanned) await putRecipe({...r, lastPlanned:dateISO});
 }
 function clearSlot(key){ removePlan(key); }
