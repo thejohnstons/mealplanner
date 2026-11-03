@@ -6,7 +6,7 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signOut as fbSignOut }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache,
-  collection, doc, setDoc, deleteDoc, getDoc, getDocs, onSnapshot, query, where, writeBatch }
+  collection, doc, setDoc, deleteDoc, getDoc, getDocs, onSnapshot, query, where, writeBatch, updateDoc, increment }
   from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 const cfg = window.FIREBASE_CONFIG || {};
@@ -31,7 +31,7 @@ if(!cfg.apiKey || String(cfg.apiKey).includes('PASTE')){
 
   let unsubs = [], planUnsub = null, checksUnsub = null;
   let planWindow = '', checksKey = '';
-  const pending = {recipes:false, plan:false, checks:false};
+  const pending = {recipes:false, plan:false, checks:false, freezer:false};
   const reportPending = () => onSync({pending: Object.values(pending).some(Boolean)});
 
   function denied(err){
@@ -47,6 +47,10 @@ if(!cfg.apiKey || String(cfg.apiKey).includes('PASTE')){
     unsubs.push(onSnapshot(col('recipes'), {includeMetadataChanges:true}, snap=>{
       pending.recipes = snap.metadata.hasPendingWrites; reportPending();
       onRecipes(snap.docs.map(d=>({...d.data(), id:d.id})));
+    }, denied));
+    unsubs.push(onSnapshot(col('freezer'), {includeMetadataChanges:true}, snap=>{
+      pending.freezer = snap.metadata.hasPendingWrites; reportPending();
+      onFreezer(snap.docs.map(d=>({...d.data(), id:d.id})));
     }, denied));
   }
 
@@ -100,22 +104,28 @@ if(!cfg.apiKey || String(cfg.apiKey).includes('PASTE')){
     setCheck(from, to, item, val){ return setDoc(ref('checks', from+'_'+to), {items:{[item]:!!val}}, {merge:true}); },
     setPhoto(id, data, recipeId){ return setDoc(ref('photos', id), {data, recipeId}); },
     deletePhoto(id){ return deleteDoc(ref('photos', id)); },
+    setFreezer(item){ const {id, ...rest} = item; return setDoc(ref('freezer', id), rest); },
+    deleteFreezer(id){ return deleteDoc(ref('freezer', id)); },
+    // increment() means two phones changing the count at once can't overwrite each other.
+    adjustFreezer(id, delta){ return updateDoc(ref('freezer', id), {serves: increment(delta)}); },
     async getPhoto(id){ const s = await getDoc(ref('photos', id)); return s.exists() ? s.data().data : null; },
     async fetchPlan(from, to){
       const s = await getDocs(query(col('plan'), where('date','>=',from), where('date','<=',to)));
       const map = {}; s.docs.forEach(d=>{ map[d.id]=d.data(); }); return map;
     },
     async exportAll(){
-      const [rs, pl, ph] = await Promise.all([getDocs(col('recipes')), getDocs(col('plan')), getDocs(col('photos'))]);
+      const [rs, pl, ph, fz] = await Promise.all([getDocs(col('recipes')), getDocs(col('plan')), getDocs(col('photos')), getDocs(col('freezer'))]);
       const photos = {}; ph.docs.forEach(d=>{ photos[d.id]=d.data().data; });
       return {
         recipes: rs.docs.map(d=>({...d.data(), id:d.id})),
         plan: pl.docs.map(d=>({...d.data(), key:d.id})),
+        freezer: fz.docs.map(d=>({...d.data(), id:d.id})),
         photos
       };
     },
-    async importAll(recipes, plan, photos){
+    async importAll(recipes, plan, photos, freezer){
       const ops = [];
+      (freezer||[]).forEach(f=>{ if(f && f.id){ const {id, ...rest} = f; ops.push(b=>b.set(ref('freezer', String(id)), rest)); } });
       recipes.forEach(r=>{ if(r && r.id){ const {id, ...rest} = r; ops.push(b=>b.set(ref('recipes', String(id)), rest)); } });
       plan.forEach(p=>ops.push(b=>b.set(ref('plan', p.key), p.entry)));
       Object.entries(photos||{}).forEach(([id,data])=>{ if(typeof data==='string' && data.length<1000000) ops.push(b=>b.set(ref('photos', id), {data})); });
