@@ -1,7 +1,7 @@
 // Keeps the app itself available offline. Your recipes and plans are stored
 // offline separately by Firebase, so this only caches the app's files.
-const CACHE = 'jmp-v6';
-const CORE = ['./', './index.html', './data.js', './firebase-config.js', './manifest.webmanifest', './icon.svg', './icon-180.png', './icon-192.png', './icon-512.png'];
+const CACHE = 'jmp-v7';
+const CORE = ['./', './index.html', './data.js', './firebase-config.js', './manifest.webmanifest', './favicon-64.png', './icon-180.png', './icon-192.png', './icon-512.png'];
 const CDN_HOSTS = ['www.gstatic.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', e => {

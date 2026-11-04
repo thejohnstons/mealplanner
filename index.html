@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#B5312B">
+<meta name="theme-color" content="#D0E3FF">
 <meta name="apple-mobile-web-app-title" content="Meal Planner">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-64.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <title>Johnston’s Meal Planner</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..650;1,9..144,400..600&family=Karla:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Yellowtail&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Jost:wght@400;500;600&display=swap">
 <style>
   :root{
     --bg:#F7F5F1; --surface:#FFFFFF; --ink:#22201D; --sub:#7A746B; --line:#E6E1D8;
@@ -19,18 +19,6 @@
     --notice-bg:#F1ECE1; --notice-ink:#5C4A2A;
     --serif:"Cormorant Garamond", "Cormorant", Garamond, "Times New Roman", serif;
     --sans:"Karla", "Helvetica Neue", Arial, sans-serif;
-  }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg:#1C1A18; --surface:#252320; --ink:#EDE9E3; --sub:#A39D93; --line:#38342F;
-      --accent:#93A583; --accent-ink:#1C1A18; --accent-soft:#2D3229; --danger:#E08A7A;
-      --notice-bg:#2E2A22; --notice-ink:#E3D3AE; color-scheme:dark;
-    }
-  }
-  :root[data-theme="dark"]{
-    --bg:#1C1A18; --surface:#252320; --ink:#EDE9E3; --sub:#A39D93; --line:#38342F;
-    --accent:#93A583; --accent-ink:#1C1A18; --accent-soft:#2D3229; --danger:#E08A7A;
-    --notice-bg:#2E2A22; --notice-ink:#E3D3AE; color-scheme:dark;
   }
   *{box-sizing:border-box}
   html,body{min-height:100%}
@@ -205,22 +193,6 @@
     --wisteria-soft:#ECE9F9; --seafoam-soft:#E3F3F8; --slipper-soft:#FDE3E3;
     --serif:"Fraunces", Georgia, "Times New Roman", serif;
   }
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --bg:#1E1A18; --surface:#28231F; --ink:#F1EAE2; --sub:#B3A79B; --line:#3A332D;
-      --accent:#F08C82; --accent-ink:#1E1A18; --accent-soft:#3B2724; --danger:#F08C82;
-      --notice-bg:#352C1A; --notice-ink:#F1DDA8;
-      --butter-soft:#3A311C; --matcha-soft:#2E3122; --attic-soft:#22303D; --apricot-soft:#3A2A1A;
-      --wisteria-soft:#2D2A3B; --seafoam-soft:#1F3036; --slipper-soft:#3A2526; color-scheme:dark;
-    }
-  }
-  :root[data-theme="dark"]{
-    --bg:#1E1A18; --surface:#28231F; --ink:#F1EAE2; --sub:#B3A79B; --line:#3A332D;
-    --accent:#F08C82; --accent-ink:#1E1A18; --accent-soft:#3B2724; --danger:#F08C82;
-    --notice-bg:#352C1A; --notice-ink:#F1DDA8;
-    --butter-soft:#3A311C; --matcha-soft:#2E3122; --attic-soft:#22303D; --apricot-soft:#3A2A1A;
-    --wisteria-soft:#2D2A3B; --seafoam-soft:#1F3036; --slipper-soft:#3A2526; color-scheme:dark;
-  }
   .mast h1{font-size:clamp(30px,5.5vw,46px)}
   .home-link{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--sub);text-decoration:none;margin-bottom:12px}
   .home-link:hover{color:var(--accent)}
@@ -301,6 +273,90 @@
   .crop-tools input[type=range]{width:200px;accent-color:#fff}
   .crop-wrap .btn{background:#fff;color:#2B2522;border-color:#fff}
   .crop-wrap .btn.ghost{background:transparent;color:#fff;border-color:rgba(255,255,255,.6)}
+
+  /* ===== v3: café style (blue and cream awning, espresso and rust) ===== */
+  :root{
+    --bg:#FFF9F0; --surface:#FFFFFF; --ink:#4C2B08; --sub:#7A5A3E; --line:#E6D9C6;
+    --accent:#8A3B1C; --accent-ink:#FFF9F0; --accent-soft:#F4DCCB; --danger:#9B2F1E;
+    --notice-bg:#D0E3FF; --notice-ink:#4C2B08;
+    --butter-soft:#F6E3D6; --matcha-soft:#EDE3CF; --attic-soft:#E3EEFF; --apricot-soft:#F4DCCB;
+    --wisteria-soft:#EFE7F5; --seafoam-soft:#D0E3FF; --slipper-soft:#F6E3D6;
+    --sky:#D0E3FF; --stripe:#BCD5F2;
+    --serif:"Cormorant Garamond", Georgia, "Times New Roman", serif;
+    --sans:Jost, "Helvetica Neue", Arial, sans-serif;
+    --script:Yellowtail, "Brush Script MT", cursive;
+    color-scheme:light;
+  }
+  body{overflow-x:clip;font-size:15.5px}
+  .wrap{padding-top:0}
+  .label{font-family:var(--serif);font-weight:700;font-size:13px;letter-spacing:.14em;color:var(--ink)}
+
+  /* Awning header */
+  .mast{position:relative;margin:0 calc(50% - 50vw) 40px;padding:30px max(20px, calc(50vw - 520px)) 34px;border-bottom:0;align-items:center;
+    background:repeating-linear-gradient(90deg,var(--stripe) 0 28px,var(--bg) 28px 56px);filter:drop-shadow(0 8px 8px rgba(76,43,8,.14))}
+  .mast::after{content:"";position:absolute;left:0;right:0;bottom:-16px;height:16px;
+    background:radial-gradient(circle at 14px 0,var(--stripe) 13.5px,transparent 14px) 0 0/56px 16px repeat-x,
+               radial-gradient(circle at 42px 0,var(--bg) 13.5px,transparent 14px) 0 0/56px 16px repeat-x}
+  .sign{background:var(--bg);border-radius:18px;padding:10px 24px 14px;box-shadow:0 0 0 1.5px var(--ink)}
+  .home-link{margin-bottom:0;color:var(--ink)}
+  .eyebrow{margin:2px 0 0;font-family:var(--serif);font-weight:600;font-size:15px;letter-spacing:.22em}
+  .mast h1{font-family:var(--script);font-weight:400;font-size:clamp(44px,7vw,58px);color:var(--accent);margin:-2px 0 0;line-height:1;letter-spacing:0}
+  .mast-tools .status{background:var(--bg);border-radius:999px;padding:6px 14px;box-shadow:0 0 0 1.5px var(--ink);color:var(--ink)}
+  .dot.live{background:#3F7A4A}
+
+  /* Tabs, buttons, chips */
+  .tabs{gap:6px;margin:0 0 24px}
+  .tab{padding:8px 18px;border-radius:999px;font-family:var(--serif);font-weight:600;font-size:18px;color:var(--ink);border:0;box-shadow:inset 0 0 0 1.5px var(--sky)}
+  .tab:hover{background:var(--sky)}
+  .tab.active{background:var(--ink);color:var(--bg);box-shadow:none}
+  .btn{border-radius:999px;border:1.5px solid var(--ink);background:var(--bg);min-height:40px}
+  .btn:hover{background:var(--sky);border-color:var(--ink)}
+  .btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .btn.primary:hover{background:var(--accent);border-color:var(--accent);filter:none}
+  .chip{border:1.5px solid var(--line);background:var(--surface)}
+  .field{border-radius:10px;border-color:var(--line)}
+  .notice{border-radius:14px}
+  .icon-btn{border-color:var(--ink);color:var(--ink);background:var(--bg)}
+
+  /* Week bar and days */
+  .weekbar{background:var(--sky);border-radius:18px;padding:12px 18px;margin-bottom:24px}
+  .weekbar .icon-btn{width:40px;height:40px;font-size:18px}
+  .weekbar .range{font-family:var(--serif);font-weight:700;font-size:26px}
+  .days{gap:18px}
+  .day{background:var(--surface);border-top:0;border-radius:18px;overflow:hidden;padding:0 16px 14px;box-shadow:0 0 0 1.5px var(--line)}
+  .day.today{border-top:0;box-shadow:0 0 0 2px var(--ink)}
+  .day-head{margin:0 -16px 6px;padding:12px 16px 10px;background:var(--sky);align-items:baseline}
+  .day.today .day-head{background:var(--ink)}
+  .day-name{font-family:var(--script);font-size:30px;font-weight:400;line-height:1;color:var(--ink)}
+  .day.today .day-name{color:var(--bg)}
+  .day-head .label{font-family:var(--sans);font-weight:600;font-size:12.5px;letter-spacing:.02em;text-transform:none}
+  .day.today .day-head .label{color:var(--bg)}
+  .meal{border-bottom:1px dashed var(--line)}
+  .meal-title{font-family:var(--serif);font-weight:600;font-size:19px}
+  .meal-title:hover{color:var(--accent)}
+  .slot-add{border-color:var(--stripe);color:var(--sub)}
+  .slot-add:hover{border-color:var(--ink);color:var(--ink);background:var(--bg)}
+  .entry-text{font-family:var(--serif);font-weight:600;font-size:18px}
+  .day-opts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .optchip{font-size:12.5px;border-radius:999px;padding:5px 11px;background:#F3EEE6;color:var(--ink);min-height:30px}
+  .optchip.on{background:var(--ink);color:var(--bg)}
+  .optchip:disabled{cursor:default;opacity:.9}
+
+  /* Recipes, sheet, picker */
+  .filter{border:0;border-radius:999px;padding:5px 13px;color:var(--ink)}
+  .filter.active{background:var(--ink);color:var(--bg)}
+  .filters{border-bottom:1px dashed var(--line)}
+  .rcard h3{font-family:var(--serif);font-weight:600;font-size:23px}
+  .rcard:hover h3{color:var(--accent)}
+  .photo{border-radius:14px}
+  .sheet{border-radius:18px;border:0;box-shadow:0 0 0 1.5px var(--line)}
+  .sheet-head{border-bottom:1.5px solid var(--ink)}
+  .sheet-head h2{font-family:var(--script);font-weight:400;font-size:42px;color:var(--accent)}
+  .detail-head h2{font-family:var(--serif);font-weight:700}
+  .picker-head h2{font-family:var(--script);font-weight:400;font-size:32px;color:var(--accent)}
+  .ptab.active{background:var(--ink);color:var(--bg)}
+  .prow .pt{font-family:var(--serif);font-weight:600}
+  .gate h1{font-family:var(--script);font-weight:400;color:var(--accent)}
 </style>
 
 </head>
@@ -908,10 +964,10 @@ function render(){
     : {cls:'live', txt:'Synced'};
   app.innerHTML = `
   <header class="mast">
-    <div>
+    <div class="sign">
       <a class="home-link" href="../">← Johnston Dashboard</a>
-      <h1>Johnston’s Meal Planner</h1>
-      <p class="sub">Weekly plan, family recipes and the shopping list.</p>
+      <p class="eyebrow">JOHNSTON’S</p>
+      <h1>meal planner</h1>
     </div>
     <div class="mast-tools">
       <span class="status"><span class="dot ${st.cls}"></span>${st.txt}</span>
@@ -929,7 +985,7 @@ function render(){
 }
 function autoGrow(el){ el.style.height='auto'; el.style.height=(el.scrollHeight+2)+'px'; }
 function renderGate(){
-  const shell = inner => `<div class="gate"><h1>Johnston’s Meal Planner</h1>${inner}</div>`;
+  const shell = inner => `<div class="gate"><p class="eyebrow">JOHNSTON’S</p><h1>meal planner</h1>${inner}</div>`;
   if(auth.status==='loading') return shell(`<div class="spinner"></div>`);
   if(auth.status==='noConfig') return shell(`
     <p>This copy isn't connected to your Firebase database yet.</p>
@@ -988,8 +1044,19 @@ function leaveForm(target){ state.pendingPhoto=null; state.editingRecipe=target;
 function entryName(e){ if(!e) return ''; const r=e.recipeId && recipes.find(x=>x.id===e.recipeId); return e.name || (r && r.title) || (ENTRY_TYPES[e.type]||{}).label || 'Meal'; }
 function showMeal(m, dateISO){
   if(!OPTIONAL_MEALS.includes(m)) return true;
-  if(m==='Dessert' ? settings.showDessert : settings.showSnacks) return true;
+  if(dayOpt(dateISO, m)) return true;
   return slotEntries(dateISO,m).length>0;
+}
+function dayOpt(dateISO, m){ const o = plan[planId(dateISO,'DayOpts')]; return !!(o && o[m]); }
+function toggleDayOpt(dateISO, m){
+  if(slotEntries(dateISO,m).length) return;                  // already has something planned, so it stays
+  const key = planId(dateISO,'DayOpts'), cur = plan[key] || {date:dateISO, meal:'DayOpts', type:'opts'};
+  const next = {...cur, [m]: !cur[m]};
+  if(!OPTIONAL_MEALS.some(x=>next[x])) removePlan(key); else putPlan(key, next);
+}
+function renderDayOpts(dateISO){
+  return `<div class="day-opts">${OPTIONAL_MEALS.map(m=>{ const has = slotEntries(dateISO,m).length>0, on = has || dayOpt(dateISO,m);
+    return `<button class="optchip ${on?'on':''}" aria-pressed="${on}" ${has?'disabled title="Remove what’s planned to hide this"':''} onclick="toggleDayOpt('${dateISO}','${m}')">${on?'✓':'+'} ${m}</button>`; }).join('')}</div>`;
 }
 function slotLabel(key){ const [d,m]=String(key).split('__'); if(!d||!m) return ''; return new Date(d+'T00:00:00').toLocaleDateString('en-AU',{weekday:'short'})+' '+m.toLowerCase(); }
 function serveControls(key,e){ return `
@@ -1030,8 +1097,6 @@ function renderPlanner(){
       <input id="week-picker" type="date" onchange="jumpToWeek(this.value)" value="${state.weekStart}" class="field" style="width:auto;padding:6px 9px;font-size:13px" aria-label="Jump to a week">
     </div>
     <div class="plan-opts">
-      <label class="chip"><input type="checkbox" id="opt-dessert" ${settings.showDessert?'checked':''} onchange="setSetting('showDessert',this.checked)"> Plan desserts</label>
-      <label class="chip"><input type="checkbox" id="opt-snacks" ${settings.showSnacks?'checked':''} onchange="setSetting('showSnacks',this.checked)"> Plan snacks</label>
       <button onclick="copyLastWeek()" class="btn small">Copy last week</button>
     </div>
   </div>
@@ -1043,6 +1108,7 @@ function renderPlanner(){
     <section class="day ${isToday?'today':''}">
       <div class="day-head"><span class="day-name">${DAY_NAMES[i]}</span><span class="label">${isToday?'Today · ':''}${fmtShort(d)}</span></div>
       ${MEALS.filter(m=>showMeal(m,dateISO)).map(m=>renderSlot(dateISO,m,DAY_NAMES[i])).join('')}
+      ${renderDayOpts(dateISO)}
       <textarea class="note-field" rows="1" placeholder="Notes for ${DAY_NAMES[i]}" aria-label="Notes for ${DAY_NAMES[i]}" data-live-edit
         oninput="autoGrow(this)" onchange="saveDayNote('${dateISO}',this.value)" onblur="afterLiveEdit()">${esc(note && note.text || '')}</textarea>
     </section>`;
