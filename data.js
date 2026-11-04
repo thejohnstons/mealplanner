@@ -104,6 +104,9 @@ if(!cfg.apiKey || String(cfg.apiKey).includes('PASTE')){
     setCheck(from, to, item, val){ return setDoc(ref('checks', from+'_'+to), {items:{[item]:!!val}}, {merge:true}); },
     setPhoto(id, data, recipeId){ return setDoc(ref('photos', id), {data, recipeId}); },
     deletePhoto(id){ return deleteDoc(ref('photos', id)); },
+    // Each person's chosen style, shared by all the family apps (households/johnston/prefs/<email>).
+    async getPref(email){ try{ const d = await getDoc(ref('prefs', String(email).toLowerCase())); return d.exists() ? d.data() : null; }catch(e){ return null; } },
+    setPref(email, data){ return setDoc(ref('prefs', String(email).toLowerCase()), data, {merge:true}); },
     setFreezer(item){ const {id, ...rest} = item; return setDoc(ref('freezer', id), rest); },
     deleteFreezer(id){ return deleteDoc(ref('freezer', id)); },
     // increment() means two phones changing the count at once can't overwrite each other.

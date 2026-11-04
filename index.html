@@ -2,6 +2,7 @@
 <html lang="en-AU">
 <head>
 <meta charset="utf-8">
+<script>try{document.documentElement.dataset.style=localStorage.getItem("johnston-style")||"default"}catch(e){document.documentElement.dataset.style="default"}</script>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#D0E3FF">
 <meta name="apple-mobile-web-app-title" content="Meal Planner">
@@ -11,7 +12,7 @@
 <title>Johnston’s Meal Planner</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Yellowtail&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=Jost:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Yellowtail&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=Jost:wght@400;500;600&family=Karla:wght@400;500;700&display=swap">
 <style>
   :root{
     --bg:#F7F5F1; --surface:#FFFFFF; --ink:#22201D; --sub:#7A746B; --line:#E6E1D8;
@@ -357,6 +358,86 @@
   .ptab.active{background:var(--ink);color:var(--bg)}
   .prow .pt{font-family:var(--serif);font-weight:600}
   .gate h1{font-family:var(--script);font-weight:400;color:var(--accent)}
+
+  /* ===== Classic green (Nathan's style): editorial, square, ruled ===== */
+  :root[data-style="green"]{
+    --bg:#F7F5F1; --surface:#F7F5F1; --ink:#1F2420; --sub:#6B6F66; --line:#CFC9BC;
+    --accent:#4F5E43; --accent-ink:#F7F5F1; --accent-soft:#ECE7DD; --danger:#8A3B2E;
+    --notice-bg:#ECE7DD; --notice-ink:#1F2420;
+    --butter-soft:#ECE7DD; --matcha-soft:#E2E6D9; --attic-soft:#E8EAE3; --apricot-soft:#EFE6DA;
+    --wisteria-soft:#E9E6E0; --seafoam-soft:#E2E6D9; --slipper-soft:#EFE6DA;
+    --sky:#ECE7DD; --stripe:#ECE7DD;
+    --sans:Karla, "Helvetica Neue", Arial, sans-serif;
+  }
+  [data-style="green"] body{font-size:15px}
+  [data-style="green"] .label{font-family:var(--sans);font-size:11px;letter-spacing:.16em;color:var(--sub);font-weight:700}
+  [data-style="green"] .mast{margin:0 0 0;padding:28px 0 22px;background:none;filter:none;border-bottom:1px solid var(--ink);display:block}
+  [data-style="green"] .mast::after{display:none}
+  .g-top{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;font-size:11.5px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--sub);padding-bottom:14px;border-bottom:1px solid var(--line)}
+  .g-top a{color:var(--sub);text-decoration:none}
+  .g-top a:hover{color:var(--accent)}
+  .g-row{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;margin-top:24px}
+  [data-style="green"] .mast h1{font-family:var(--serif);font-weight:400;font-size:clamp(52px,8vw,76px);line-height:.95;letter-spacing:-.015em;color:var(--ink);margin:0}
+  .g-dek{margin:0;max-width:340px;font-family:var(--serif);font-style:italic;font-size:20px;line-height:1.35;color:var(--sub)}
+  [data-style="green"] .mast-tools .status,[data-style="green"] .g-row .status{background:none;box-shadow:none;padding:0;font-size:12px;color:var(--sub)}
+  [data-style="green"] .dot.live{background:var(--accent)}
+  [data-style="green"] .tabs{gap:26px;padding:14px 0;margin:0 0 26px;border-bottom:1px solid var(--line)}
+  [data-style="green"] .tab{box-shadow:none;border-radius:0;padding:4px 0;font-family:var(--sans);font-weight:500;font-size:14px;border-bottom:2px solid transparent}
+  [data-style="green"] .tab:hover{background:none;color:var(--accent)}
+  [data-style="green"] .tab.active{background:none;color:var(--ink);border-bottom-color:var(--accent)}
+  [data-style="green"] .btn{border-radius:0;border:1px solid var(--ink);background:transparent;min-height:40px}
+  [data-style="green"] .btn:hover{background:var(--accent-soft)}
+  [data-style="green"] .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+  [data-style="green"] .btn.primary:hover{background:#3E4A36;border-color:#3E4A36}
+  [data-style="green"] .chip{border-radius:0;border:1px solid var(--line);background:transparent}
+  [data-style="green"] .field{border-radius:0}
+  [data-style="green"] .notice{border-radius:0}
+  [data-style="green"] .icon-btn{border:1px solid var(--ink);border-radius:0;background:transparent}
+  [data-style="green"] .weekbar{background:none;padding:0;border-radius:0}
+  [data-style="green"] .weekbar .range{font-weight:400;font-size:34px}
+  [data-style="green"] .weekbar .icon-btn{border:0;font-size:22px}
+  [data-style="green"] .days{gap:0;border-top:1px solid var(--ink);border-left:1px solid var(--line)}
+  @media (min-width:1100px){[data-style="green"] .days{grid-template-columns:repeat(7,minmax(0,1fr))}}
+  [data-style="green"] .day{border-radius:0;box-shadow:none;background:none;border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:0 12px 16px;overflow:visible}
+  [data-style="green"] .day.today{background:var(--accent-soft);box-shadow:none}
+  [data-style="green"] .day-head{background:none;margin:0 0 4px;padding:14px 0 12px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:2px 8px}
+  [data-style="green"] .day.today .day-head{background:none;border-bottom-color:var(--ink)}
+  [data-style="green"] .day-name,[data-style="green"] .day.today .day-name{font-family:var(--serif);font-size:28px;font-weight:400;color:var(--ink)}
+  [data-style="green"] .day-head .label,[data-style="green"] .day.today .day-head .label{font-family:var(--sans);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--sub)}
+  [data-style="green"] .day.today .day-head .label{color:var(--accent)}
+  [data-style="green"] .meal{border-bottom:1px solid var(--line)}
+  [data-style="green"] .meal-title{font-family:var(--serif);font-weight:500;font-size:19px}
+  [data-style="green"] .entry-text{font-family:var(--serif);font-weight:500}
+  [data-style="green"] .etag{border-radius:0}
+  [data-style="green"] .slot-add{border:0;border-bottom:1px solid var(--line);border-radius:0;padding:2px 0;color:var(--sub)}
+  [data-style="green"] .slot-add:hover{background:none;color:var(--accent);border-color:var(--accent)}
+  [data-style="green"] .optchip{background:none;padding:2px 0;margin-right:8px;color:var(--sub);border-radius:0}
+  [data-style="green"] .optchip.on{background:none;color:var(--accent);font-weight:700}
+  [data-style="green"] .filter{border-radius:0;padding:4px 0;margin-right:6px;border-bottom:2px solid transparent}
+  [data-style="green"] .filter.active{background:none;color:var(--ink);border-bottom-color:var(--accent)}
+  [data-style="green"] .photo,[data-style="green"] .hero{border-radius:0}
+  [data-style="green"] .rcard h3{font-weight:500;font-size:24px}
+  [data-style="green"] .sheet{border-radius:0;box-shadow:none;border-top:1px solid var(--ink);padding-left:0;padding-right:0;background:none}
+  [data-style="green"] .sheet-head h2{font-family:var(--serif);font-weight:400;font-size:40px;color:var(--ink)}
+  [data-style="green"] .picker{border-radius:0}
+  [data-style="green"] .picker-head h2{font-family:var(--serif);font-weight:400;font-size:30px;color:var(--ink)}
+  [data-style="green"] .ptab{border-radius:0}
+  [data-style="green"] .ptab.active{background:var(--accent);color:var(--accent-ink)}
+  [data-style="green"] .quick button{border-radius:0}
+  [data-style="green"] .gate h1{font-family:var(--serif);font-weight:400;color:var(--ink)}
+  [data-style="green"] .gate .eyebrow{font-family:var(--sans);font-size:11.5px;letter-spacing:.16em}
+  .mast.hidden{display:none}
+  [data-style="green"] .day-head{display:block}
+  [data-style="green"] .day-head .label{display:block;margin-top:4px}
+  [data-style="green"] .meal-row{flex-wrap:wrap;gap:4px 8px}
+  [data-style="green"] .day-opts{gap:2px 12px}
+  [data-style="green"] .optchip{min-height:26px}
+  @media (min-width:1100px){[data-style="green"] .day-name,[data-style="green"] .day.today .day-name{font-size:26px}}
+  .style-pick{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+  .style-pick button{border:1.5px solid var(--line);padding:10px 14px;text-align:left;min-width:200px;border-radius:12px;background:var(--surface)}
+  .style-pick button[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+  .style-pick b{display:block;font-family:var(--serif);font-size:19px}
+  [data-style="green"] .style-pick button{border-radius:0}
 </style>
 
 </head>
@@ -474,8 +555,30 @@ function sampleRecipes(){
 }
 
 /* ---------- DATA HOOKS (called by the Firebase module) ---------- */
+/* ---------- Each person's style (shared by all the family apps) ---------- */
+let myStyle = document.documentElement.dataset.style==='green' ? 'green' : 'default';
+function applyStyle(st){
+  myStyle = st==='green' ? 'green' : 'default';
+  document.documentElement.dataset.style = myStyle;
+  try{ localStorage.setItem('johnston-style', myStyle); }catch(e){}
+  const m = document.querySelector('meta[name="theme-color"]'); if(m) m.content = myStyle==='green' ? '#F7F5F1' : '#D0E3FF';
+}
+async function loadStyle(){
+  if(!window.DATA || !auth.email || !DATA.getPref) return;
+  const p = await DATA.getPref(auth.email);
+  const fallback = (window.STYLE_BY_EMAIL||{})[String(auth.email).toLowerCase()];
+  const st = (p && p.style) || fallback || 'default';
+  if(st!==myStyle){ applyStyle(st); render(); }
+}
+function chooseStyle(st){
+  applyStyle(st); render();
+  if(!isDemo() && window.DATA && DATA.setPref && auth.email) DATA.setPref(auth.email, {style:myStyle}).catch(()=>showError("Couldn't save your style. It's set on this device for now."));
+}
+function isoWeek(d){ const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); const day=t.getUTCDay()||7; t.setUTCDate(t.getUTCDate()+4-day); const y=new Date(Date.UTC(t.getUTCFullYear(),0,1)); return Math.ceil(((t-y)/86400000+1)/7); }
 function onAuth(a){
+  const was = auth.status;
   auth = {...auth, ...a};
+  if(auth.status==='signedIn' && was!=='signedIn') loadStyle();
   if(auth.status!=='signedIn'){ recipes=[]; plan={}; groceryChecks={}; freezer=[]; loaded={recipes:false,plan:false}; }
   render();
 }
@@ -962,8 +1065,15 @@ function render(){
     : !sync.online ? {cls:'warn', txt:'Offline · saved on this device'}
     : sync.pending ? {cls:'', txt:'Syncing…'}
     : {cls:'live', txt:'Synced'};
+  const monday0 = new Date(state.weekStart+'T00:00:00');
+  const head = myStyle==='green' ? `
+  <header class="mast g">
+    <div class="g-top"><a href="../">← The Johnston Home</a><span>The Johnston Kitchen · Week ${isoWeek(monday0)}</span></div>
+    <div class="g-row"><h1>Meal<br>Planner</h1><div style="display:flex;flex-direction:column;gap:10px;align-items:flex-start"><p class="g-dek">Seven days, three meals, one shopping list.</p><span class="status"><span class="dot ${st.cls}"></span>${st.txt}</span></div></div>
+  </header>` : '';
   app.innerHTML = `
-  <header class="mast">
+  ${head}
+  <header class="mast ${head?'hidden':''}">
     <div class="sign">
       <a class="home-link" href="../">← Johnston Dashboard</a>
       <p class="eyebrow">JOHNSTON’S</p>
@@ -985,7 +1095,7 @@ function render(){
 }
 function autoGrow(el){ el.style.height='auto'; el.style.height=(el.scrollHeight+2)+'px'; }
 function renderGate(){
-  const shell = inner => `<div class="gate"><p class="eyebrow">JOHNSTON’S</p><h1>meal planner</h1>${inner}</div>`;
+  const shell = inner => myStyle==='green' ? `<div class="gate"><p class="eyebrow">THE JOHNSTON KITCHEN</p><h1>Meal Planner</h1>${inner}</div>` : `<div class="gate"><p class="eyebrow">JOHNSTON’S</p><h1>meal planner</h1>${inner}</div>`;
   if(auth.status==='loading') return shell(`<div class="spinner"></div>`);
   if(auth.status==='noConfig') return shell(`
     <p>This copy isn't connected to your Firebase database yet.</p>
@@ -1004,6 +1114,14 @@ function renderGate(){
 function renderSettings(){
   return `
   <div class="settings">
+    <section>
+      <div class="label">My style</div>
+      <p class="sub" style="margin:6px 0 0">Just for you: the other person keeps their own. It applies to the dashboard, meal planner and garden.</p>
+      <div class="style-pick">
+        <button aria-pressed="${myStyle==='default'}" onclick="chooseStyle('default')"><b>Original</b><span class="sub">Pink dashboard, café planner, Eden garden</span></button>
+        <button aria-pressed="${myStyle==='green'}" onclick="chooseStyle('green')"><b>Classic green</b><span class="sub">Editorial, green and paper</span></button>
+      </div>
+    </section>
     <section>
       <div class="label">Account</div>
       ${isDemo()?`<p>Demo mode. Nothing is saved.</p><button class="btn small" onclick="location.reload()">Leave demo</button>`
