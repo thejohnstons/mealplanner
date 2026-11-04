@@ -223,10 +223,12 @@
   @media (min-width:700px){.picker{top:50%;bottom:auto;transform:translate(-50%,-50%);border-radius:20px}}
   .picker-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:18px 20px 4px}
   .picker-head h2{font-family:var(--serif);font-weight:500;font-size:24px;margin:0;line-height:1.15}
-  .ptabs{display:flex;gap:6px;padding:10px 20px 12px;overflow-x:auto}
+  .ptabs{display:flex;gap:6px;padding:10px 20px 12px;overflow-x:auto;flex-shrink:0}
+  .picker-head{flex-shrink:0}
+  .ptab{flex-shrink:0;min-height:36px}
   .ptab{padding:6px 14px;border-radius:999px;font-size:14px;background:var(--bg);color:var(--sub);white-space:nowrap}
   .ptab.active{background:var(--ink);color:var(--surface)}
-  .pbody{overflow-y:auto;padding:0 20px 22px;-webkit-overflow-scrolling:touch}
+  .pbody{overflow-y:auto;padding:0 20px 22px;-webkit-overflow-scrolling:touch;flex:1 1 auto;min-height:0}
   .pgroup{font-size:12px;color:var(--sub);margin:16px 0 2px;font-weight:700}
   .prow{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;padding:11px 0;border-bottom:1px solid var(--line)}
   .prow:hover .pt{color:var(--accent)}
@@ -427,6 +429,21 @@
   [data-style="green"] .gate h1{font-family:var(--serif);font-weight:400;color:var(--ink)}
   [data-style="green"] .gate .eyebrow{font-family:var(--sans);font-size:11.5px;letter-spacing:.16em}
   .mast.hidden{display:none}
+  /* Day tasks and shopping extras */
+  .day-tasks{margin-top:10px;background:var(--sky);border-radius:12px;padding:8px 12px}
+  .dtask{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:8px;align-items:center;padding:4px 0;font-size:14px}
+  .dtask input{width:16px;height:16px;accent-color:var(--ink)}
+  .dtask label.done{text-decoration:line-through;color:var(--sub)}
+  .dtask .remove{font-size:16px;line-height:1;padding:2px 6px}
+  .dtask-in{width:100%;border:0;border-bottom:1px dashed var(--stripe);background:transparent;padding:6px 0;font-size:14px;color:var(--ink)}
+  .dtask-in:focus{outline:none;border-bottom-color:var(--ink)}
+  .extras{background:var(--accent-soft);border-radius:12px;padding:12px 14px}
+  .extras .gitem{grid-template-columns:24px minmax(0,1fr) auto}
+  .extras .remove{font-size:18px;line-height:1;padding:2px 8px;color:var(--sub)}
+  .extra-add{display:flex;gap:8px;margin-top:8px}
+  .extra-add .field{flex:1;min-width:0}
+  [data-style="green"] .day-tasks,[data-style="green"] .extras{border-radius:0;background:var(--accent-soft)}
+
   [data-style="green"] .day-head{display:block}
   [data-style="green"] .day-head .label{display:block;margin-top:4px}
   [data-style="green"] .meal-row{flex-wrap:wrap;gap:4px 8px}
@@ -520,11 +537,11 @@ function saveLS(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){
 let auth = {status:'loading', email:'', error:''};
 let sync = {online: navigator.onLine, pending:false};
 let loaded = {recipes:false, plan:false};
-let recipes = [], plan = {}, groceryChecks = {}, freezer = [];
+let recipes = [], plan = {}, groceryChecks = {}, freezer = [], extras = [];
 const photoCache = {}, photoLoading = new Set();
 let settings = {unit:'metric', showDessert:false, showSnacks:false, combine:true, metricView:false, ...loadLS(LS_S, {})};
 function setSetting(k,v){ settings[k]=v; saveLS(LS_S, settings); render(); }
-let state = { tab:'planner', editingRecipe:null, importText:'', weekStart:isoDate(getMonday(new Date())), recipeFilter:'All', recipeSort:'alpha', recipeSearch:'', error:'', pendingPhoto:null, info:'', picker:null };
+let state = { tab: location.hash==='#shop' ? 'grocery' : 'planner', editingRecipe:null, importText:'', weekStart:isoDate(getMonday(new Date())), recipeFilter:'All', recipeSort:'alpha', recipeSearch:'', error:'', pendingPhoto:null, info:'', picker:null };
 state.shopFrom = state.weekStart;
 state.shopTo = isoDate(addDays(new Date(state.weekStart+'T00:00:00'),6));
 state.exportHeadings = false; state.exportMsg = null;
@@ -586,6 +603,7 @@ function onRecipes(list){ recipes=list; loaded.recipes=true; liveRender(); }
 function onPlan(map){ plan=map; loaded.plan=true; liveRender(); }
 function onChecks(map){ groceryChecks=map; liveRender(); }
 function onFreezer(list){ freezer=list; liveRender(); }
+function onExtras(list){ extras=list; liveRender(); }
 function onSync(s){ const before=JSON.stringify(sync); sync={...sync,...s}; if(JSON.stringify(sync)!==before) liveRender(); }
 function startDemo(){ auth={status:'demo', email:'', error:''}; recipes=sampleRecipes(); plan={}; groceryChecks={};
   freezer=[{id:'f1', name:'Spaghetti Bolognese', recipeId:'r2', serves:6, frozenOn:isoDate(addDays(new Date(),-12)), note:''}];
@@ -615,6 +633,8 @@ function putCheck(key,val){ const from=state.shopFrom, to=state.shopTo; write(()
 function putFreezer(item){ write(()=>DATA.setFreezer(item), ()=>{ const i=freezer.findIndex(x=>x.id===item.id); if(i>=0) freezer[i]=item; else freezer.push(item); }); }
 function removeFreezer(id){ write(()=>DATA.deleteFreezer(id), ()=>{ freezer=freezer.filter(f=>f.id!==id); }); }
 function adjustFreezer(id, delta){ const it=freezer.find(f=>f.id===id); if(!it || !delta) return; write(()=>DATA.adjustFreezer(id,delta), ()=>{ it.serves=(+it.serves||0)+delta; }); }
+function putExtra(item){ write(()=>DATA.setExtra(item), ()=>{ const i=extras.findIndex(x=>x.id===item.id); if(i>=0) extras[i]=item; else extras.push(item); }); }
+function removeExtra(id){ write(()=>DATA.deleteExtra(id), ()=>{ extras=extras.filter(x=>x.id!==id); }); }
 function dropAsset(id){ if(!id) return; delete photoCache[id]; write(()=>DATA.deletePhoto(id), ()=>{}); }
 
 /* ---------- PHOTOS (stored as compressed images inside the database) ---------- */
@@ -1172,8 +1192,33 @@ function toggleDayOpt(dateISO, m){
   const next = {...cur, [m]: !cur[m]};
   if(!OPTIONAL_MEALS.some(x=>next[x])) removePlan(key); else putPlan(key, next);
 }
+/* Day tasks: little jobs for a day (feed the sourdough, soak the rice). They show on the dashboard's to-do list. */
+function dayTasks(dateISO){ return plan[planId(dateISO,'DayTasks')] || null; }
+function toggleDayTasks(dateISO){
+  const key = planId(dateISO,'DayTasks'), cur = plan[key];
+  if(cur && (cur.items||[]).length) return;
+  if(cur) removePlan(key); else { putPlan(key, {date:dateISO, meal:'DayTasks', type:'tasks', items:[]}); setTimeout(()=>{ const el=document.getElementById('dt-'+dateISO); if(el) el.focus(); }, 60); }
+}
+function addDayTask(dateISO, text){
+  const t = String(text||'').trim(); if(!t) return;
+  const key = planId(dateISO,'DayTasks'), cur = plan[key] || {date:dateISO, meal:'DayTasks', type:'tasks', items:[]};
+  putPlan(key, {...cur, items:[...(cur.items||[]), {id:'k'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), text:t, done:false}]});
+  if(arguments[2]) setTimeout(()=>{ const el=document.getElementById('dt-'+dateISO); if(el) el.focus(); }, 60);   // keep typing the next one
+}
+function tickDayTask(dateISO, id){ const key=planId(dateISO,'DayTasks'), cur=plan[key]; if(!cur) return; putPlan(key, {...cur, items:cur.items.map(i=>i.id===id?{...i, done:!i.done}:i)}); }
+function removeDayTask(dateISO, id){ const key=planId(dateISO,'DayTasks'), cur=plan[key]; if(!cur) return; putPlan(key, {...cur, items:cur.items.filter(i=>i.id!==id)}); }
+function renderDayTasks(dateISO){
+  const dt = dayTasks(dateISO); if(!dt) return '';
+  return `<div class="day-tasks"><span class="label">Tasks</span>
+    ${(dt.items||[]).map(i=>`<div class="dtask"><input type="checkbox" id="dtk-${i.id}" ${i.done?'checked':''} onchange="tickDayTask('${dateISO}','${i.id}')"><label for="dtk-${i.id}" class="${i.done?'done':''}">${esc(i.text)}</label><button class="remove" onclick="removeDayTask('${dateISO}','${i.id}')" aria-label="Remove ${esc(i.text)}">×</button></div>`).join('')}
+    <input id="dt-${dateISO}" class="dtask-in" placeholder="Add a task, e.g. soak the rice" aria-label="Add a task for this day" data-live-edit
+      onkeydown="if(event.key==='Enter'){const v=this.value;this.value='';addDayTask('${dateISO}',v,true);}" onblur="const v=this.value;this.value='';if(v.trim())addDayTask('${dateISO}',v);afterLiveEdit()">
+  </div>`;
+}
 function renderDayOpts(dateISO){
-  return `<div class="day-opts">${OPTIONAL_MEALS.map(m=>{ const has = slotEntries(dateISO,m).length>0, on = has || dayOpt(dateISO,m);
+  const dt = dayTasks(dateISO), hasT = !!(dt && (dt.items||[]).length), onT = !!dt;
+  const taskChip = `<button class="optchip ${onT?'on':''}" aria-pressed="${onT}" ${hasT?'disabled title="Remove the tasks to hide this"':''} onclick="toggleDayTasks('${dateISO}')">${onT?'✓':'+'} Tasks</button>`;
+  return `<div class="day-opts">${taskChip}${OPTIONAL_MEALS.map(m=>{ const has = slotEntries(dateISO,m).length>0, on = has || dayOpt(dateISO,m);
     return `<button class="optchip ${on?'on':''}" aria-pressed="${on}" ${has?'disabled title="Remove what’s planned to hide this"':''} onclick="toggleDayOpt('${dateISO}','${m}')">${on?'✓':'+'} ${m}</button>`; }).join('')}</div>`;
 }
 function slotLabel(key){ const [d,m]=String(key).split('__'); if(!d||!m) return ''; return new Date(d+'T00:00:00').toLocaleDateString('en-AU',{weekday:'short'})+' '+m.toLowerCase(); }
@@ -1226,6 +1271,7 @@ function renderPlanner(){
     <section class="day ${isToday?'today':''}">
       <div class="day-head"><span class="day-name">${DAY_NAMES[i]}</span><span class="label">${isToday?'Today · ':''}${fmtShort(d)}</span></div>
       ${MEALS.filter(m=>showMeal(m,dateISO)).map(m=>renderSlot(dateISO,m,DAY_NAMES[i])).join('')}
+      ${renderDayTasks(dateISO)}
       ${renderDayOpts(dateISO)}
       <textarea class="note-field" rows="1" placeholder="Notes for ${DAY_NAMES[i]}" aria-label="Notes for ${DAY_NAMES[i]}" data-live-edit
         oninput="autoGrow(this)" onchange="saveDayNote('${dateISO}',this.value)" onblur="afterLiveEdit()">${esc(note && note.text || '')}</textarea>
@@ -1833,7 +1879,20 @@ function buildExportText(list){
     if(state.exportHeadings){ if(lines.length) lines.push(''); lines.push(a.toUpperCase()); }
     items.forEach(i=>lines.push(itemLine(i)));
   });
+  const ex = extras.filter(x=>!x.done).map(x=>x.text);
+  if(ex.length){ if(state.exportHeadings){ if(lines.length) lines.push(''); lines.push('EXTRAS'); } lines.push(...ex); }
   return lines.join('\n');
+}
+function addExtra(){ const el=document.getElementById('extra-in'); const t=(el&&el.value||'').trim(); if(!t) return; el.value=''; putExtra({id:'x'+Date.now().toString(36), text:t, done:false, added:Date.now()}); setTimeout(()=>{ const e=document.getElementById('extra-in'); if(e) e.focus(); },60); }
+function clearExtras(){ extras.filter(x=>x.done).forEach(x=>removeExtra(x.id)); }
+// Runs the "Add to Shopping" Apple Shortcut with every unticked item (see the setup guide).
+function sendToReminders(){
+  const saved = state.exportHeadings; state.exportHeadings = false;
+  const text = buildExportText(buildGroceryList(shopDates())); state.exportHeadings = saved;
+  if(!text){ state.exportMsg={ok:false, text:'', note:'Nothing to send. Everything is already ticked off.'}; render(); return; }
+  const go = ()=>{ location.href = 'shortcuts://run-shortcut?name=' + encodeURIComponent('Add to Shopping') + '&input=text&text=' + encodeURIComponent(text); };
+  // Also copied, so the Shortcut can fall back to the clipboard
+  try{ if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(go, go); else go(); }catch(e){ go(); }
 }
 function exportList(){
   const list = buildGroceryList(shopDates());
@@ -1886,6 +1945,14 @@ function renderGrocery(){
       <div><div class="label">${fmtShort(new Date(state.shopFrom+'T00:00:00'))} – ${fmtShort(new Date(state.shopTo+'T00:00:00'))}</div><h2>${heading}</h2></div>
       <label class="chip"><input type="checkbox" id="combine-toggle" ${settings.combine?'checked':''} onchange="setSetting('combine',this.checked)"> Combine similar items</label>
     </div>
+    <div class="aisle extras">
+      <div class="label">Added by you</div>
+      ${extras.slice().sort((a,b)=>(a.done-b.done)||(a.added||0)-(b.added||0)).map(x=>`<div class="gitem ${x.done?'done':''}">
+        <input type="checkbox" id="ex-${x.id}" ${x.done?'checked':''} onchange="putExtra({...extras.find(e=>e.id==='${x.id}'), done:this.checked})">
+        <label for="ex-${x.id}" class="txt" style="grid-column:2/4">${esc(x.text)}</label><button class="remove" onclick="removeExtra('${x.id}')" aria-label="Remove ${esc(x.text)}">×</button></div>`).join('')}
+      <div class="extra-add" data-live-edit-wrap><input id="extra-in" class="field" placeholder="+ Add an item, e.g. nappies, dog food" aria-label="Add a shopping item" data-live-edit onkeydown="if(event.key==='Enter')addExtra()" onblur="afterLiveEdit()"><button class="btn small" onclick="addExtra()">Add</button></div>
+      ${extras.some(x=>x.done)?`<button class="textlink" style="margin-top:6px" onclick="clearExtras()">Clear ticked extras</button>`:''}
+    </div>
     ${list.length===0?`<p class="empty" style="margin-top:22px">No meals planned in these dates yet.</p>`:''}
     ${aisles.map(a=>`
       <div class="aisle">
@@ -1900,9 +1967,10 @@ function renderGrocery(){
           </label>`;
         }).join('')}
       </div>`).join('')}
-    ${list.length?`
+    ${list.length || extras.length?`
       <div class="export-row">
-        <button onclick="exportList()" class="btn primary">Copy for Reminders</button>
+        <button onclick="sendToReminders()" class="btn primary">Send to Reminders</button>
+        <button onclick="exportList()" class="btn">Copy for Reminders</button>
         <label class="chip"><input type="checkbox" id="export-headings" ${state.exportHeadings?'checked':''} onchange="state.exportHeadings=this.checked;state.exportMsg=null"> Include aisle headings</label>
         <span class="sub" style="font-size:13px">Ticked items are left out.</span>
       </div>

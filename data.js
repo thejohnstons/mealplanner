@@ -52,6 +52,7 @@ if(!cfg.apiKey || String(cfg.apiKey).includes('PASTE')){
       pending.freezer = snap.metadata.hasPendingWrites; reportPending();
       onFreezer(snap.docs.map(d=>({...d.data(), id:d.id})));
     }, denied));
+    unsubs.push(onSnapshot(col('extras'), snap=>{ onExtras(snap.docs.map(d=>({...d.data(), id:d.id}))); }, denied));
   }
 
   // Only the dates on screen are listened to, so reads stay small as the archive grows.
@@ -111,6 +112,9 @@ if(!cfg.apiKey || String(cfg.apiKey).includes('PASTE')){
     deleteFreezer(id){ return deleteDoc(ref('freezer', id)); },
     // increment() means two phones changing the count at once can't overwrite each other.
     adjustFreezer(id, delta){ return updateDoc(ref('freezer', id), {serves: increment(delta)}); },
+    // Extra shopping items you type in yourself (nappies, dog food…)
+    setExtra(item){ const {id, ...rest} = item; return setDoc(ref('extras', id), rest); },
+    deleteExtra(id){ return deleteDoc(ref('extras', id)); },
     async getPhoto(id){ const s = await getDoc(ref('photos', id)); return s.exists() ? s.data().data : null; },
     async fetchPlan(from, to){
       const s = await getDocs(query(col('plan'), where('date','>=',from), where('date','<=',to)));
