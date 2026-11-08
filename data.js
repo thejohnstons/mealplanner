@@ -53,6 +53,9 @@ if(!cfg.apiKey || String(cfg.apiKey).includes('PASTE')){
       onFreezer(snap.docs.map(d=>({...d.data(), id:d.id})));
     }, denied));
     unsubs.push(onSnapshot(col('extras'), snap=>{ onExtras(snap.docs.map(d=>({...d.data(), id:d.id}))); }, denied));
+    // Guests and past meals from "Dinners we've made" (so the planner can warn about repeats)
+    unsubs.push(onSnapshot(col('dinners_guests'), snap=>{ if(window.onDinnerGuests) onDinnerGuests(snap.docs.map(d=>({...d.data(), id:d.id}))); }, ()=>{}));
+    unsubs.push(onSnapshot(col('dinners_meals'), snap=>{ if(window.onDinnerMeals) onDinnerMeals(snap.docs.map(d=>({...d.data(), id:d.id}))); }, ()=>{}));
   }
 
   // Only the dates on screen are listened to, so reads stay small as the archive grows.
@@ -115,6 +118,9 @@ if(!cfg.apiKey || String(cfg.apiKey).includes('PASTE')){
     // Extra shopping items you type in yourself (nappies, dog food…)
     setExtra(item){ const {id, ...rest} = item; return setDoc(ref('extras', id), rest); },
     deleteExtra(id){ return deleteDoc(ref('extras', id)); },
+    setDinnerMeal(item){ const {id, ...rest} = item; return setDoc(ref('dinners_meals', id), rest); },
+    deleteDinnerMeal(id){ return deleteDoc(ref('dinners_meals', id)); },
+    setDinnerGuest(item){ const {id, ...rest} = item; return setDoc(ref('dinners_guests', id), rest); },
     async getPhoto(id){ const s = await getDoc(ref('photos', id)); return s.exists() ? s.data().data : null; },
     async fetchPlan(from, to){
       const s = await getDocs(query(col('plan'), where('date','>=',from), where('date','<=',to)));

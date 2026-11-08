@@ -429,6 +429,15 @@
   [data-style="green"] .gate h1{font-family:var(--serif);font-weight:400;color:var(--ink)}
   [data-style="green"] .gate .eyebrow{font-family:var(--sans);font-size:11.5px;letter-spacing:.16em}
   .mast.hidden{display:none}
+  /* Guests */
+  .day-guests{margin-top:10px;background:var(--accent-soft);border-radius:12px;padding:8px 12px}
+  .gchip{display:inline-block;background:var(--surface);border-radius:999px;padding:2px 10px;font-size:13px;font-weight:600;margin:2px 4px 2px 0}
+  .gnote{display:block;font-family:var(--sans);font-size:12px;font-weight:500;color:var(--sub);margin-top:2px}
+  .gp-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:2px;max-height:300px;overflow:auto}
+  .gp-row{display:flex;gap:8px;align-items:center;min-height:38px;font-size:15px}
+  .gp-row input{width:18px;height:18px;accent-color:var(--ink)}
+  [data-style="green"] .day-guests,[data-style="green"] .gchip{border-radius:0}
+
   /* Day tasks and shopping extras */
   .day-tasks{margin-top:10px;background:var(--sky);border-radius:12px;padding:8px 12px}
   .dtask{display:grid;grid-template-columns:20px minmax(0,1fr) auto;gap:8px;align-items:center;padding:4px 0;font-size:14px}
@@ -541,7 +550,7 @@ let recipes = [], plan = {}, groceryChecks = {}, freezer = [], extras = [];
 const photoCache = {}, photoLoading = new Set();
 let settings = {unit:'metric', showDessert:false, showSnacks:false, combine:true, metricView:false, ...loadLS(LS_S, {})};
 function setSetting(k,v){ settings[k]=v; saveLS(LS_S, settings); render(); }
-let state = { tab: location.hash==='#shop' ? 'grocery' : 'planner', editingRecipe:null, importText:'', weekStart:isoDate(getMonday(new Date())), recipeFilter:'All', recipeSort:'alpha', recipeSearch:'', error:'', pendingPhoto:null, info:'', picker:null };
+let state = { scrollToday:true, tab: location.hash==='#shop' ? 'grocery' : 'planner', editingRecipe:null, importText:'', weekStart:isoDate(getMonday(new Date())), recipeFilter:'All', recipeSort:'alpha', recipeSearch:'', error:'', pendingPhoto:null, info:'', picker:null };
 state.shopFrom = state.weekStart;
 state.shopTo = isoDate(addDays(new Date(state.weekStart+'T00:00:00'),6));
 state.exportHeadings = false; state.exportMsg = null;
@@ -600,10 +609,101 @@ function onAuth(a){
   render();
 }
 function onRecipes(list){ recipes=list; loaded.recipes=true; liveRender(); }
-function onPlan(map){ plan=map; loaded.plan=true; liveRender(); }
+function onPlan(map){ plan=map; loaded.plan=true; liveRender(); scheduleGuestSync(); }
 function onChecks(map){ groceryChecks=map; liveRender(); }
 function onFreezer(list){ freezer=list; liveRender(); }
 function onExtras(list){ extras=list; liveRender(); }
+/* ---------- Guests (linked with "Dinners we've made") ---------- */
+let dinnerGuests = [], dinnerMeals = [];
+window.onDinnerGuests = list => { dinnerGuests = list; liveRender(); };
+window.onDinnerMeals = list => { dinnerMeals = list; liveRender(); scheduleGuestSync(); };
+const guestName = id => (dinnerGuests.find(g=>g.id===id)||{name:'Guest'}).name;
+const dKey = d => String(d).toLowerCase().replace(/\b(spaghetti|fettuccine|fettucine)\b/g,'').replace('bolognaise','bolognese').replace(/[^a-z0-9]+/g,' ').trim();
+function dayGuests(dateISO){ return plan[planId(dateISO,'DayGuests')] || null; }
+// When did we last make this dish for any of these guests? (ignores this day's own record)
+function madeBefore(dish, guestIds, dateISO){
+  const k = dKey(dish), hits = [];
+  dinnerMeals.forEach(m=>{ if(m.id==='plan-'+dateISO) return; if(!(m.dishes||[]).some(x=>dKey(x)===k)) return;
+    (m.guests||[]).filter(g=>guestIds.includes(g)).forEach(g=>hits.push({g, date:m.date})); });
+  return hits.sort((a,b)=>b.date.localeCompare(a.date));
+}
+const DIET_WORDS = {mushroom:['mushroom','porcini','shiitake'], seafood:['prawn','shrimp','fish','salmon','tuna','crab','lobster','mussel','calamari','squid','seafood','barramundi'], fish:['fish','salmon','tuna','barramundi'], prawn:['prawn','shrimp'], nut:['nut','peanut','satay','almond','cashew','pesto','walnut','pecan'], peanut:['peanut','satay'], pork:['pork','bacon','ham','chorizo','prosciutto','pancetta','sausage'], beef:['beef','steak','mince','bolognese','burger'], dairy:['cheese','cream','butter','milk','feta','parmesan','carbonara','custard','yoghurt'], gluten:['pasta','bread','bun','burger','pizza','noodle','wrap','bagel','pastry','crumble','brownie','cake','bao','gnocchi','flour'], egg:['egg','carbonara','custard','aioli','mayo'], chilli:['chilli','spicy','jalapeno']};
+// Checks the recipe's title and ingredients against each guest's dietary notes
+function dietClash(guestIds, title, ingredients){
+  const hay = [title, ...(ingredients||[]).map(i=>i.name||'')].join(' ').toLowerCase(), out = [];
+  guestIds.forEach(id=>{ const g = dinnerGuests.find(x=>x.id===id); if(!g || !g.dietary) return; const notes = g.dietary.toLowerCase();
+    Object.entries(DIET_WORDS).forEach(([k,words])=>{ if(notes.includes(k) && words.some(w=>hay.includes(w))) out.push(g.name); });
+    if(/vegetarian|vegan/.test(notes) && ['beef','pork','bacon','ham','chicken','lamb','fish','prawn','salmon','turkey','mince','chorizo'].some(w=>hay.includes(w))) out.push(g.name); });
+  return [...new Set(out)];
+}
+function guestNotesFor(dateISO, e){
+  const dg = dayGuests(dateISO); if(!dg || !(dg.guests||[]).length || !e) return '';
+  const r = e.recipeId && recipes.find(x=>x.id===e.recipeId); const title = entryName(e);
+  if(e.type && ['leftovers','freezer','out','pantry','tbd'].includes(e.type)) return '';
+  const before = madeBefore(title, dg.guests, dateISO), clash = dietClash(dg.guests, title, r && r.ingredients);
+  const bits = [];
+  if(before.length) bits.push(`⚠️ Made for ${esc(guestName(before[0].g))} on ${esc(new Date(before[0].date+'T00:00:00').toLocaleDateString('en-AU',{day:'numeric', month:'short', year:'numeric'}))}`);
+  else bits.push('✨ New for your guests');
+  if(clash.length) bits.push(`⚠️ Check dietary notes: ${esc(clash.join(', '))}`);
+  return `<span class="gnote">${bits.join(' · ')}</span>`;
+}
+function renderDayGuests(dateISO){
+  const dg = dayGuests(dateISO); if(!dg) return '';
+  const ids = dg.guests||[];
+  const diets = ids.map(id=>dinnerGuests.find(g=>g.id===id)).filter(g=>g && g.dietary);
+  return `<div class="day-guests"><span class="label">Guests${dg.occasion && dg.occasion!=='Dinner'?` · ${esc(dg.occasion)}`:''}</span>
+    <div>${ids.length ? ids.map(id=>`<span class="gchip">${esc(guestName(id))}</span>`).join('') : '<span class="sub">No one chosen yet</span>'} <button class="textlink" style="font-size:12.5px" onclick="openGuestPicker('${dateISO}')">${ids.length?'Change':'Choose guests'}</button></div>
+    ${diets.map(g=>`<div class="sub" style="font-size:12.5px">🥗 <b>${esc(g.name)}:</b> ${esc(g.dietary)}</div>`).join('')}
+  </div>`;
+}
+function toggleDayGuests(dateISO){
+  const key = planId(dateISO,'DayGuests'), cur = plan[key];
+  if(cur && (cur.guests||[]).length){ openGuestPicker(dateISO); return; }
+  if(cur){ removePlan(key); return; }
+  putPlan(key, {date:dateISO, meal:'DayGuests', type:'guests', guests:[], occasion:'Dinner'}); openGuestPicker(dateISO);
+}
+function openGuestPicker(dateISO){ state.guestPicker = dateISO; render(); }
+function closeGuestPicker(){ state.guestPicker = null; render(); }
+function saveGuestPicker(){
+  const dateISO = state.guestPicker, key = planId(dateISO,'DayGuests');
+  const ids = [...document.querySelectorAll('.gp-g')].filter(c=>c.checked).map(c=>c.value);
+  const occ = (document.getElementById('gp-occ')||{}).value || 'Dinner';
+  const newName = ((document.getElementById('gp-new')||{}).value||'').trim();
+  if(newName && !isDemo() && window.DATA && DATA.setDinnerGuest){ const id='g-'+Date.now().toString(36); DATA.setDinnerGuest({id, name:newName, dietary:'', order:Date.now()}).catch(()=>{}); ids.push(id); dinnerGuests.push({id, name:newName, dietary:''}); }
+  else if(newName){ const id='g-'+Date.now().toString(36); dinnerGuests.push({id, name:newName, dietary:''}); ids.push(id); }
+  if(!ids.length){ removePlan(key); } else putPlan(key, {date:dateISO, meal:'DayGuests', type:'guests', guests:ids, occasion:occ});
+  state.guestPicker = null; render(); scheduleGuestSync();
+}
+function renderGuestPicker(){
+  if(!state.guestPicker) return '';
+  const dateISO = state.guestPicker, dg = dayGuests(dateISO) || {guests:[], occasion:'Dinner'};
+  const list = dinnerGuests.slice().sort((a,b)=>a.name.localeCompare(b.name));
+  return `<div class="backdrop" onclick="closeGuestPicker()"></div><div class="picker" role="dialog" aria-modal="true" aria-labelledby="gp-h">
+    <div class="picker-head"><h2 id="gp-h">Who’s coming?</h2><button class="icon-btn" onclick="closeGuestPicker()" aria-label="Close">×</button></div>
+    <div class="pbody" style="padding-top:8px">
+      <p class="sub" style="margin:0 0 8px">${esc(new Date(dateISO+'T00:00:00').toLocaleDateString('en-AU',{weekday:'long', day:'numeric', month:'long'}))}. What you make is recorded in “Dinners we’ve made” automatically.</p>
+      <label class="sub" style="display:flex;gap:8px;align-items:center;margin-bottom:8px">Occasion <select id="gp-occ" class="field" style="max-width:200px">${['Dinner','Lunch','Brunch','Christmas Eve','Christmas Day','Easter','Birthday','Other'].map(o=>`<option ${o===(dg.occasion||'Dinner')?'selected':''}>${o}</option>`).join('')}</select></label>
+      <div class="gp-list">${list.map(g=>`<label class="gp-row"><input type="checkbox" class="gp-g" value="${g.id}" ${(dg.guests||[]).includes(g.id)?'checked':''}> ${esc(g.name)}${g.dietary?' <span class="sub">🥗</span>':''}</label>`).join('') || '<p class="sub">No guests yet. Add one below.</p>'}</div>
+      <input id="gp-new" class="field" style="margin-top:10px" placeholder="+ New guest, e.g. Kelsey & Josh">
+      <div style="display:flex;gap:10px;margin-top:14px"><button class="btn primary" onclick="saveGuestPicker()">Save</button><button class="btn" onclick="closeGuestPicker()">Cancel</button></div>
+    </div></div>`;
+}
+// Records each guest day in "Dinners we've made" once the day has arrived (and keeps it up to date if the plan changes)
+let guestSyncTimer = null;
+function scheduleGuestSync(){ clearTimeout(guestSyncTimer); guestSyncTimer = setTimeout(syncGuestMeals, 1500); }
+function syncGuestMeals(){
+  if(isDemo() || !window.DATA || !DATA.setDinnerMeal) return;
+  const today = isoDate(new Date());
+  Object.values(plan).filter(v=>v && v.type==='guests' && (v.guests||[]).length && v.date<=today).forEach(dg=>{
+    const dishes = [];
+    MEALS.forEach(m=>slotEntries(dg.date, m).forEach(([,e])=>{ if(e.type && ['leftovers','freezer','out','pantry','tbd'].includes(e.type)) return; const n = entryName(e); if(n && !dishes.includes(n)) dishes.push(n); }));
+    if(!dishes.length) return;
+    const id = 'plan-'+dg.date, cur = dinnerMeals.find(m=>m.id===id);
+    const next = {id, date:dg.date, occasion:dg.occasion||'Dinner', guests:dg.guests, dishes, notes:(cur&&cur.notes)||'', source:'planner'};
+    if(cur && JSON.stringify([cur.guests, cur.dishes, cur.occasion])===JSON.stringify([next.guests, next.dishes, next.occasion])) return;
+    DATA.setDinnerMeal(next).catch(()=>{});
+  });
+}
 function onSync(s){ const before=JSON.stringify(sync); sync={...sync,...s}; if(JSON.stringify(sync)!==before) liveRender(); }
 function startDemo(){ auth={status:'demo', email:'', error:''}; recipes=sampleRecipes(); plan={}; groceryChecks={};
   freezer=[{id:'f1', name:'Spaghetti Bolognese', recipeId:'r2', serves:6, frozenOn:isoDate(addDays(new Date(),-12)), note:''}];
@@ -808,6 +908,8 @@ function parseIngredientLine(raw){
   if(mx){ const u=unitFor(mx[3]); const rest=mx[4].replace(/^(tins?|cans?|packets?|packs?|jars?|bottles?|tubs?)\s+(of\s+)?/i,''); line = `${(+mx[1])*(+mx[2].replace(',','.'))} ${u} ${rest}`; }
   const qm = line.match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:[.,]\d+)?)(?:\s*(?:-|–|to)\s*(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:[.,]\d+)?))?\s*(.*)$/i);
   if(!qm){
+    const tail = line.match(/^(.*?\S)\s*[-–—:,]\s*(\d+(?:[.,]\d+)?)\s*(g|kg|ml|l)\b\.?$/i);    // "Beef mince - 500 g"
+    if(tail){ const {name,note} = splitNote(tail[1]); return {name, note, qty:+tail[2].replace(',','.'), unit:unitFor(tail[3])}; }
     const {name,note} = splitNote(line);
     const pm = String(note).match(/^(\d+(?:[.,]\d+)?)\s*(g|kg|ml|l)$/i);      // "(400g) coconut milk" → 400 g
     if(pm && name) return {name, note:'', qty:+pm[1].replace(',','.'), unit:unitFor(pm[2])};
@@ -1025,7 +1127,10 @@ function singular(w){
   return w;
 }
 function normName(n){
-  let x = String(n||'').toLowerCase().replace(/\([^)]*\)/g,' ').replace(DESCRIPTORS,' ').replace(/[^a-z0-9&' -]/g,' ').replace(/\s+/g,' ').trim();
+  let x = String(n||'').toLowerCase().replace(/\([^)]*\)/g,' ');
+  // "minced beef", "ground beef" and plain "mince" are all beef mince (and the same for other meats)
+  x = x.replace(/\b(?:minced|ground)\s+(beef|pork|lamb|chicken|turkey|veal)\b/g, '$1 mince').replace(/^(?:lean |extra lean |premium |fresh )*mince(?:d meat)?$/, 'beef mince');
+  x = x.replace(DESCRIPTORS,' ').replace(/[^a-z0-9&' -]/g,' ').replace(/\s+/g,' ').trim();
   const words = x.split(' '); if(words.length) words[words.length-1] = singular(words[words.length-1]);
   x = words.join(' ');
   return SYNONYMS[x] || x || String(n||'').toLowerCase();
@@ -1070,7 +1175,9 @@ function buildGroceryList(dates){
     if(ml) parts.push(fmtMetricTotal(ml,'mL','L'));
     Object.entries(other).forEach(([u,q])=>parts.push(amountText({qty:+q.toFixed(2), unit:u})));
     return {name: name.charAt(0).toUpperCase()+name.slice(1), amount: pantry ? '' : parts.join(' + '),
-      aisle: pantry ? PANTRY_AISLE : guessAisle(n), key:'c-'+slug(n), sources:[...new Set(list.map(r=>r.recipe))], pantry};
+      aisle: pantry ? PANTRY_AISLE : guessAisle(n), key:'c-'+slug(n), sources:[...new Set(list.map(r=>r.recipe))], pantry,
+      // each recipe's share, so you can see the total is right (and spot a recipe with no amount)
+      shares: [...new Set(list.map(r=>r.recipe))].map(rec=>{ const rs=list.filter(r=>r.recipe===rec); const amt = rs.every(r=>has(r.ing.qty)) ? rs.map(r=>amountText({qty:+(r.ing.qty*r.factor).toFixed(2), unit:r.ing.unit})).join(' + ') : 'no amount in recipe'; return `${amt} for ${rec}`; })};
   });
 }
 
@@ -1110,8 +1217,9 @@ function render(){
   ${state.error?`<div class="notice">${esc(state.error)}</div>`:''}
   ${state.info?`<div class="notice ok">${esc(state.info)} <button class="textlink" onclick="state.info='';render()">Dismiss</button></div>`:''}
   <main>${!ready?renderLoading():(state.tab==='planner'?renderPlanner():state.tab==='recipes'?renderRecipes():state.tab==='grocery'?renderGrocery():state.tab==='freezer'?renderFreezer():renderSettings())}</main>
-  ${ready && state.picker ? renderPicker() : ''}`;
+  ${ready && state.picker ? renderPicker() : ''}${ready ? renderGuestPicker() : ''}`;
   document.querySelectorAll('.note-field').forEach(autoGrow);
+  scrollToToday();
 }
 function autoGrow(el){ el.style.height='auto'; el.style.height=(el.scrollHeight+2)+'px'; }
 function renderGate(){
@@ -1175,7 +1283,7 @@ function renderSettings(){
   </div>`;
 }
 function renderLoading(){ return `<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:80px 0"><div class="spinner"></div><p class="sub">Loading your meal plan…</p></div>`; }
-function setTab(t){ state.pendingPhoto=null; state.tab=t; state.editingRecipe=null; state.parsedDraft=null; state.picker=null; state.fzFor=null; render(); }
+function setTab(t){ if(t==='planner') state.scrollToday=true; state.pendingPhoto=null; state.tab=t; state.editingRecipe=null; state.parsedDraft=null; state.picker=null; state.fzFor=null; render(); }
 function leaveForm(target){ state.pendingPhoto=null; state.editingRecipe=target; state.parsedDraft=null; render(); }
 
 /* ---- Planner ---- */
@@ -1205,12 +1313,13 @@ function addDayTask(dateISO, text){
   putPlan(key, {...cur, items:[...(cur.items||[]), {id:'k'+Date.now().toString(36)+Math.random().toString(36).slice(2,5), text:t, done:false}]});
   if(arguments[2]) setTimeout(()=>{ const el=document.getElementById('dt-'+dateISO); if(el) el.focus(); }, 60);   // keep typing the next one
 }
-function tickDayTask(dateISO, id){ const key=planId(dateISO,'DayTasks'), cur=plan[key]; if(!cur) return; putPlan(key, {...cur, items:cur.items.map(i=>i.id===id?{...i, done:!i.done}:i)}); }
+function tickDayTask(dateISO, id){ state.justTicked=id; setTimeout(()=>{ if(state.justTicked===id){ state.justTicked=null; render(); } }, 900); const key=planId(dateISO,'DayTasks'), cur=plan[key]; if(!cur) return; putPlan(key, {...cur, items:cur.items.map(i=>i.id===id?{...i, done:!i.done}:i)}); }
 function removeDayTask(dateISO, id){ const key=planId(dateISO,'DayTasks'), cur=plan[key]; if(!cur) return; putPlan(key, {...cur, items:cur.items.filter(i=>i.id!==id)}); }
 function renderDayTasks(dateISO){
   const dt = dayTasks(dateISO); if(!dt) return '';
   return `<div class="day-tasks"><span class="label">Tasks</span>
-    ${(dt.items||[]).map(i=>`<div class="dtask"><input type="checkbox" id="dtk-${i.id}" ${i.done?'checked':''} onchange="tickDayTask('${dateISO}','${i.id}')"><label for="dtk-${i.id}" class="${i.done?'done':''}">${esc(i.text)}</label><button class="remove" onclick="removeDayTask('${dateISO}','${i.id}')" aria-label="Remove ${esc(i.text)}">×</button></div>`).join('')}
+    ${(dt.items||[]).filter(i=>!i.done || state.showDoneTasks || state.justTicked===i.id).map(i=>`<div class="dtask"><input type="checkbox" id="dtk-${i.id}" ${i.done?'checked':''} onchange="tickDayTask('${dateISO}','${i.id}')"><label for="dtk-${i.id}" class="${i.done?'done':''}">${esc(i.text)}</label><button class="remove" onclick="removeDayTask('${dateISO}','${i.id}')" aria-label="Remove ${esc(i.text)}">×</button></div>`).join('')}
+    ${(dt.items||[]).some(i=>i.done) ? `<button class="textlink" style="font-size:12.5px" onclick="state.showDoneTasks=!state.showDoneTasks;render()">${state.showDoneTasks ? 'Hide ticked' : `Show ticked (${dt.items.filter(i=>i.done).length})`}</button>` : ''}
     <input id="dt-${dateISO}" class="dtask-in" placeholder="Add a task, e.g. soak the rice" aria-label="Add a task for this day" data-live-edit
       onkeydown="if(event.key==='Enter'){const v=this.value;this.value='';addDayTask('${dateISO}',v,true);}" onblur="const v=this.value;this.value='';if(v.trim())addDayTask('${dateISO}',v);afterLiveEdit()">
   </div>`;
@@ -1218,7 +1327,9 @@ function renderDayTasks(dateISO){
 function renderDayOpts(dateISO){
   const dt = dayTasks(dateISO), hasT = !!(dt && (dt.items||[]).length), onT = !!dt;
   const taskChip = `<button class="optchip ${onT?'on':''}" aria-pressed="${onT}" ${hasT?'disabled title="Remove the tasks to hide this"':''} onclick="toggleDayTasks('${dateISO}')">${onT?'✓':'+'} Tasks</button>`;
-  return `<div class="day-opts">${taskChip}${OPTIONAL_MEALS.map(m=>{ const has = slotEntries(dateISO,m).length>0, on = has || dayOpt(dateISO,m);
+  const dg = dayGuests(dateISO), onG = !!dg;
+  const guestChip = `<button class="optchip ${onG?'on':''}" aria-pressed="${onG}" onclick="toggleDayGuests('${dateISO}')">${onG?'✓':'+'} Guests</button>`;
+  return `<div class="day-opts">${taskChip}${guestChip}${OPTIONAL_MEALS.map(m=>{ const has = slotEntries(dateISO,m).length>0, on = has || dayOpt(dateISO,m);
     return `<button class="optchip ${on?'on':''}" aria-pressed="${on}" ${has?'disabled title="Remove what’s planned to hide this"':''} onclick="toggleDayOpt('${dateISO}','${m}')">${on?'✓':'+'} ${m}</button>`; }).join('')}</div>`;
 }
 function slotLabel(key){ const [d,m]=String(key).split('__'); if(!d||!m) return ''; return new Date(d+'T00:00:00').toLocaleDateString('en-AU',{weekday:'short'})+' '+m.toLowerCase(); }
@@ -1231,7 +1342,8 @@ function renderEntry(key,e){
   const r = e.recipeId ? recipes.find(rc=>rc.id===e.recipeId) : null;
   const title = r ? `<button onclick="openRecipe('${r.id}')" class="meal-title">${esc(entryName(e))}</button>` : `<div class="entry-text">${esc(entryName(e))}</div>`;
   const remove = `<button onclick="clearSlot('${key}')" class="remove">Remove</button>`;
-  if(kind==='recipe') return `<div class="meal-item">${title}<div class="meal-row">${serveControls(key,e)}${remove}</div></div>`;
+  const gn = guestNotesFor(e.date || key.split('__')[0], e);
+  if(kind==='recipe') return `<div class="meal-item">${title}${gn}<div class="meal-row">${serveControls(key,e)}${remove}</div></div>`;
   const t = ENTRY_TYPES[kind] || ENTRY_TYPES.custom;
   const tag = `<span class="etag t-${kind}">${t.icon} ${t.label}</span>`;
   if(kind==='leftovers') return `<div class="meal-item">${tag}${title}<div class="meal-row"><span class="entry-sub">${e.fromKey?`from ${esc(slotLabel(e.fromKey))}`:''}</span>${remove}</div></div>`;
@@ -1271,6 +1383,7 @@ function renderPlanner(){
     <section class="day ${isToday?'today':''}">
       <div class="day-head"><span class="day-name">${DAY_NAMES[i]}</span><span class="label">${isToday?'Today · ':''}${fmtShort(d)}</span></div>
       ${MEALS.filter(m=>showMeal(m,dateISO)).map(m=>renderSlot(dateISO,m,DAY_NAMES[i])).join('')}
+      ${renderDayGuests(dateISO)}
       ${renderDayTasks(dateISO)}
       ${renderDayOpts(dateISO)}
       <textarea class="note-field" rows="1" placeholder="Notes for ${DAY_NAMES[i]}" aria-label="Notes for ${DAY_NAMES[i]}" data-live-edit
@@ -1286,7 +1399,17 @@ function saveDayNote(dateISO, text){
 }
 function openRecipe(id){ state.picker=null; state.tab='recipes'; state.editingRecipe=id; render(); window.scrollTo(0,0); }
 function navWeek(delta){ state.weekStart = isoDate(addDays(new Date(state.weekStart+'T00:00:00'), delta*7)); render(); }
-function jumpToday(){ state.weekStart = isoDate(getMonday(new Date())); render(); }
+function jumpToday(){ state.weekStart = isoDate(getMonday(new Date())); state.scrollToday=true; render(); }
+// Opening the planner (or tapping "This week") brings today's card into view, so there's no scrolling to find it.
+// It only happens then, never when updates arrive from the other phone.
+function scrollToToday(){
+  if(!state.scrollToday || state.tab!=='planner' || state.picker) return;
+  const days = document.querySelectorAll('section.day'); if(!days.length) return;   // still loading
+  state.scrollToday = false;
+  const el = document.querySelector('section.day.today'); if(!el) return;            // a different week is showing
+  requestAnimationFrame(()=>{ const r = el.getBoundingClientRect();
+    if(r.top < 0 || r.top > window.innerHeight*0.6) window.scrollTo({top: window.scrollY + r.top - 16, behavior: 'smooth'}); });
+}
 function jumpToWeek(dateStr){ if(!dateStr) return; state.weekStart = isoDate(getMonday(new Date(dateStr+'T00:00:00'))); render(); }
 async function copyLastWeek(){
   const cur = weekDates();
@@ -1349,7 +1472,10 @@ function pickerRecipeList(){
   const list = recipes.filter(r=>recipeMatches(r,p.q)).sort((a,b)=>a.title.localeCompare(b.title));
   if(!recipes.length) return `<p class="empty" style="margin-top:18px">No recipes yet. Add some in the Recipes tab.</p>`;
   if(!list.length) return `<p class="sub" style="margin-top:16px">No recipes match “${esc(p.q)}”.</p>`;
-  const row = r => `<button class="prow" onclick="pickRecipe('${r.id}')"><span class="pt">${esc(r.title)}</span><span class="pm">${esc(r.time||'')}</span></button>`;
+  const dg = dayGuests(p.date), gIds = dg ? (dg.guests||[]) : [];
+  const hint = r => { if(!gIds.length) return ''; const b = madeBefore(r.title, gIds, p.date), c = dietClash(gIds, r.title, r.ingredients);
+    return `<span class="gnote">${b.length ? `⚠️ Made for ${esc(guestName(b[0].g))} ${esc(new Date(b[0].date+'T00:00:00').toLocaleDateString('en-AU',{month:'short', year:'numeric'}))}` : '✨ New for them'}${c.length?` · ⚠️ dietary: ${esc(c.join(', '))}`:''}</span>`; };
+  const row = r => `<button class="prow" onclick="pickRecipe('${r.id}')"><span class="pt">${esc(r.title)}${hint(r)}</span><span class="pm">${esc(r.time||'')}</span></button>`;
   const main = list.filter(r=>(r.categories||[]).includes(p.meal)), rest = list.filter(r=>!(r.categories||[]).includes(p.meal));
   return (main.length?`<div class="pgroup">${p.meal} recipes</div>${main.map(row).join('')}`:'') +
          (rest.length?`<div class="pgroup">${main.length?'Everything else':'All recipes'}</div>${rest.map(row).join('')}`:'');
@@ -1960,7 +2086,8 @@ function renderGrocery(){
         ${a===PANTRY_AISLE?`<p class="sub" style="font-size:13px;margin:2px 0 6px">Small amounts of things most kitchens already have. Check the cupboard before you buy.</p>`:''}
         ${list.filter(i=>i.aisle===a).sort((x,y)=>x.name.localeCompare(y.name)).map(i=>{
           const k=checkKey(i); const checked=!!groceryChecks[k];
-          const src = (i.pantry || i.sources.length>1) ? `<span class="src">${i.pantry?`In ${i.sources.length} meal${i.sources.length===1?'':'s'}: `:'For '}${esc(i.sources.join(', '))}</span>` : '';
+          const src = i.pantry ? `<span class="src">In ${i.sources.length} meal${i.sources.length===1?'':'s'}: ${esc(i.sources.join(', '))}</span>`
+            : i.sources.length>1 ? `<span class="src">${esc((i.shares||[]).join(' · ') || 'For '+i.sources.join(', '))}</span>` : '';
           return `<label class="gitem ${checked?'done':''}">
             <input type="checkbox" id="chk-${k}" ${checked?'checked':''} onchange="putCheck('${k}',this.checked)">
             <span class="q num">${esc(i.amount)}</span><span class="txt"><span>${esc(i.name)}</span>${src}</span>
@@ -1969,8 +2096,7 @@ function renderGrocery(){
       </div>`).join('')}
     ${list.length || extras.length?`
       <div class="export-row">
-        <button onclick="sendToReminders()" class="btn primary">Send to Reminders</button>
-        <button onclick="exportList()" class="btn">Copy for Reminders</button>
+        <button onclick="exportList()" class="btn primary">Copy for Reminders</button>
         <label class="chip"><input type="checkbox" id="export-headings" ${state.exportHeadings?'checked':''} onchange="state.exportHeadings=this.checked;state.exportMsg=null"> Include aisle headings</label>
         <span class="sub" style="font-size:13px">Ticked items are left out.</span>
       </div>
