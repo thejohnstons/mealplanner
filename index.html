@@ -729,6 +729,30 @@ function putRecipe(r){ if(!isDemo() && window.DATA) upsertLocal(r); write(()=>DA
 function removeRecipe(id){ write(()=>DATA.deleteRecipe(id), ()=>{ recipes=recipes.filter(r=>r.id!==id); }); }
 function putPlan(key,entry){ write(()=>DATA.setPlan(key,entry), ()=>{ plan[key]=entry; }); }
 function removePlan(key){ write(()=>DATA.deletePlan(key), ()=>{ delete plan[key]; }); }
+/* ---- Freezer ingredients (uncooked: meat, bread, veg…) live in the same freezer list, marked kind:'ingredient' ---- */
+const isIng = f => f && f.kind==='ingredient';
+const FZ_STOP = new Set(['fresh','frozen','boneless','skinless','large','small','medium','lean','free','range','organic','chopped','diced','sliced','of','the','a','and','or','x','raw','whole','thin','thick','cut','pack','packet']);
+const FZ_GENERIC = new Set(['beef','pork','chicken','lamb','fish','veal','turkey','meat','frozen','mixed','green','red','white','brown','loin']);
+function fzTokens(n){ return String(n||'').toLowerCase().replace(/[^a-z ]+/g,' ').split(/\s+/).filter(w=>w && !FZ_STOP.has(w)).map(w=> w.length>4 && w.endsWith('ies') ? w.slice(0,-3)+'y' : w.length>3 && w.endsWith('es') && /(ch|sh|ss|x)es$/.test(w) ? w.slice(0,-2) : w.length>3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0,-1) : w); }
+function fzMatch(name){
+  const B = fzTokens(name); if(!B.length) return [];
+  return freezer.filter(f=>isIng(f) && +f.serves>0).filter(f=>{ const A = fzTokens(f.name); if(!A.length) return false;
+    const both = A.filter(w=>B.includes(w)); if(!both.length) return false;
+    return B.includes(A[A.length-1]) || A.includes(B[B.length-1]) || both.some(w=>!FZ_GENERIC.has(w)); });
+}
+function fzDismissed(){ try{ return JSON.parse(localStorage.getItem('jmp-fz-no')||'{}'); }catch(e){ return {}; } }
+function fzDismiss(key){ const d = fzDismissed(); d[state.shopFrom+'|'+key] = 1; try{ localStorage.setItem('jmp-fz-no', JSON.stringify(d)); }catch(e){} render(); }
+function fzUse(key, fid){ putCheck(key, true); state.fzUsed = {...(state.fzUsed||{}), [key]: fid}; render(); }
+function fzDoneUsing(key){ const u = {...(state.fzUsed||{})}; delete u[key]; state.fzUsed = u; render(); }
+function addFreezerIngredient(){
+  const name = document.getElementById('fzi-name').value.trim();
+  if(!name){ showError('Type what you’re freezing first, e.g. pork loin chops.'); return; }
+  const n = Math.max(0.1, +String(document.getElementById('fzi-n').value).replace(',','.') || 1);
+  const unit = document.getElementById('fzi-unit').value, date = document.getElementById('fzi-date').value || isoDate(new Date());
+  putFreezer({id:'g'+Date.now(), kind:'ingredient', name, serves:n, unit, frozenOn:date, note:''});
+  state.info = `Added ${n} ${unit} of ${name} to the freezer.`; render();
+}
+const FZ_UNITS = ['pieces','packs','loaves','kg','g','bags','portions'];
 function putCheck(key,val){ const from=state.shopFrom, to=state.shopTo; write(()=>DATA.setCheck(from,to,key,val), ()=>{ if(val) groceryChecks[key]=true; else delete groceryChecks[key]; }); }
 function putFreezer(item){ write(()=>DATA.setFreezer(item), ()=>{ const i=freezer.findIndex(x=>x.id===item.id); if(i>=0) freezer[i]=item; else freezer.push(item); }); }
 function removeFreezer(id){ write(()=>DATA.deleteFreezer(id), ()=>{ freezer=freezer.filter(f=>f.id!==id); }); }
@@ -1475,9 +1499,11 @@ function pickerRecipeList(){
   const dg = dayGuests(p.date), gIds = dg ? (dg.guests||[]) : [];
   const hint = r => { if(!gIds.length) return ''; const b = madeBefore(r.title, gIds, p.date), c = dietClash(gIds, r.title, r.ingredients);
     return `<span class="gnote">${b.length ? `⚠️ Made for ${esc(guestName(b[0].g))} ${esc(new Date(b[0].date+'T00:00:00').toLocaleDateString('en-AU',{month:'short', year:'numeric'}))}` : '✨ New for them'}${c.length?` · ⚠️ dietary: ${esc(c.join(', '))}`:''}</span>`; };
-  const row = r => `<button class="prow" onclick="pickRecipe('${r.id}')"><span class="pt">${esc(r.title)}${hint(r)}</span><span class="pm">${esc(r.time||'')}</span></button>`;
+  const fzUses = r => { const hits = []; (r.ingredients||[]).forEach(ing=>fzMatch(ing.name).forEach(f=>{ if(!hits.includes(f.name)) hits.push(f.name); })); return hits; };
+  const row = r => { const fz = fzUses(r); return `<button class="prow" onclick="pickRecipe('${r.id}')"><span class="pt">${esc(r.title)}${hint(r)}${fz.length?`<span class="gnote">🧊 uses ${esc(fz.join(', '))} from the freezer</span>`:''}</span><span class="pm">${esc(r.time||'')}</span></button>`; };
+  const fzList = freezer.some(f=>isIng(f) && +f.serves>0) ? list.filter(r=>fzUses(r).length).sort((a,b)=>{ const age = r => Math.min(...fzUses(r).map(n=>{ const f=freezer.find(x=>isIng(x)&&x.name===n); return f&&f.frozenOn?new Date(f.frozenOn).getTime():9e15; })); return age(a)-age(b); }) : [];
   const main = list.filter(r=>(r.categories||[]).includes(p.meal)), rest = list.filter(r=>!(r.categories||[]).includes(p.meal));
-  return (main.length?`<div class="pgroup">${p.meal} recipes</div>${main.map(row).join('')}`:'') +
+  return (fzList.length && !p.q ? `<div class="pgroup">🧊 Use what’s in the freezer</div>${fzList.slice(0,6).map(row).join('')}` : '') + (main.length?`<div class="pgroup">${p.meal} recipes</div>${main.map(row).join('')}`:'') +
          (rest.length?`<div class="pgroup">${main.length?'Everything else':'All recipes'}</div>${rest.map(row).join('')}`:'');
 }
 function leftoverCandidates(){
@@ -1489,7 +1515,7 @@ function leftoverCandidates(){
 function renderPicker(){
   const p = state.picker;
   const day = new Date(p.date+'T00:00:00').toLocaleDateString('en-AU',{weekday:'long', day:'numeric', month:'short'});
-  const stocked = freezer.filter(f=>+f.serves>0);
+  const stocked = freezer.filter(f=>!isIng(f) && +f.serves>0);
   const tabs = [['recipes','Recipes'],['leftovers','Leftovers'],['freezer',`Freezer${stocked.length?` (${stocked.length})`:''}`],['other','Other']];
   let body = '';
   if(p.tab==='recipes'){
@@ -1925,8 +1951,9 @@ function ageText(iso){
   if(days<60) return `${Math.round(days/7)} weeks ago`; return `${Math.round(days/30.4)} months ago`;
 }
 function renderFreezer(){
-  const list = freezer.slice().sort((a,b)=>((+b.serves>0)-(+a.serves>0)) || String(a.frozenOn).localeCompare(String(b.frozenOn)));
-  const total = freezer.reduce((t,f)=>t+Math.max(0,+f.serves||0),0);
+  const list = freezer.filter(f=>!isIng(f)).sort((a,b)=>((+b.serves>0)-(+a.serves>0)) || String(a.frozenOn).localeCompare(String(b.frozenOn)));
+  const total = freezer.filter(f=>!isIng(f)).reduce((t,f)=>t+Math.max(0,+f.serves||0),0);
+  const ings = freezer.filter(isIng).sort((a,b)=>((+b.serves>0)-(+a.serves>0)) || String(a.frozenOn).localeCompare(String(b.frozenOn)));
   return `
   <datalist id="fz-recipes">${recipes.map(r=>`<option value="${esc(r.title)}">`).join('')}</datalist>
   <div class="fz-form">
@@ -1951,6 +1978,23 @@ function renderFreezer(){
           ${confirming?`<button class="textlink" style="color:var(--danger);font-weight:700" onclick="state.confirmFz=null;removeFreezer('${f.id}')">Yes, remove</button> <button class="textlink" onclick="state.confirmFz=null;render()">Cancel</button>`
                       :`<button class="textlink" onclick="state.confirmFz='${f.id}';render()">Remove</button>`}</div>
       </div>`; }).join('')}
+  </div>
+  <h2 style="margin:28px 0 4px">🥩 Ingredients in the freezer</h2>
+  <p class="sub" style="margin:0 0 10px">Uncooked things like meat, bread or veg. The shopping list asks before leaving them off, so nothing is assumed.</p>
+  <div class="fz-form">
+    <label class="wide"><span class="label">Ingredient</span><input id="fzi-name" class="field" placeholder="e.g. Pork loin chops, Beef mince, Sourdough loaf"></label>
+    <label><span class="label">Amount</span><input id="fzi-n" class="field" inputmode="decimal" value="1"></label>
+    <label><span class="label">Unit</span><select id="fzi-unit" class="field">${FZ_UNITS.map(u=>`<option>${u}</option>`).join('')}</select></label>
+    <label><span class="label">Frozen on</span><input id="fzi-date" class="field" type="date" value="${isoDate(new Date())}"></label>
+    <div class="wide"><button class="btn primary" onclick="addFreezerIngredient()">Add ingredient</button></div>
+  </div>
+  <div class="fz-list">
+    ${ings.length ? '' : '<p class="sub" style="margin:0">No ingredients yet. Add your half a cow, spare bread or extra chops above.</p>'}
+    ${ings.map(f=>{ const n=+f.serves||0, confirming = state.confirmFz===f.id;
+      return `<div class="fz-item ${n>0?'':'gone'}"><div class="fz-name">${esc(f.name)}</div>
+        <div class="fz-count"><button class="icon-btn" onclick="adjustFreezer('${f.id}',-1)" ${n<=0?'disabled':''} aria-label="One less ${esc(f.name)}">−</button><span class="n num">${+n.toFixed(2)}</span><button class="icon-btn" onclick="adjustFreezer('${f.id}',1)" aria-label="One more ${esc(f.name)}">+</button></div>
+        <div class="meta">${esc(f.unit||'')} · ${n>0?`Frozen ${ageText(f.frozenOn)}`:'All used'} ·
+          ${confirming?`<button class="textlink" style="color:var(--danger);font-weight:700" onclick="state.confirmFz=null;removeFreezer('${f.id}')">Yes, remove</button> <button class="textlink" onclick="state.confirmFz=null;render()">Cancel</button>`:`<button class="textlink" onclick="state.confirmFz='${f.id}';render()">Remove</button>`}</div></div>`; }).join('')}
   </div>`;
 }
 function addFreezerItem(){
@@ -2079,6 +2123,20 @@ function renderGrocery(){
       <div class="extra-add" data-live-edit-wrap><input id="extra-in" class="field" placeholder="+ Add an item, e.g. nappies, dog food" aria-label="Add a shopping item" data-live-edit onkeydown="if(event.key==='Enter')addExtra()" onblur="afterLiveEdit()"><button class="btn small" onclick="addExtra()">Add</button></div>
       ${extras.some(x=>x.done)?`<button class="textlink" style="margin-top:6px" onclick="clearExtras()">Clear ticked extras</button>`:''}
     </div>
+    ${(()=>{ const no = fzDismissed(), used = state.fzUsed||{};
+      const sugg = list.filter(i=>!i.pantry && !groceryChecks[checkKey(i)] && !no[state.shopFrom+'|'+checkKey(i)]).map(i=>({i, m:fzMatch(i.name)})).filter(x=>x.m.length);
+      const usedRows = Object.entries(used).map(([k,fid])=>({k, f:freezer.find(f=>f.id===fid), i:list.find(x=>checkKey(x)===k)})).filter(x=>x.f && x.i);
+      if(!sugg.length && !usedRows.length) return '';
+      return `<div class="aisle" style="background:#EAF4FB;border-radius:14px;padding:12px 14px;margin-top:14px">
+        <div class="label">🧊 Might be in the freezer</div>
+        <p class="sub" style="font-size:13px;margin:2px 0 8px">These look like ingredients you’ve frozen. Check before you buy.</p>
+        ${sugg.map(({i,m})=>{ const f=m[0], k=checkKey(i); return `<div style="padding:8px 0;border-top:1px solid rgba(0,0,0,.06)"><div><b>${esc(i.name)}</b>${i.amount?` <span class="sub" style="font-size:13px">· recipe needs ${esc(i.amount)}</span>`:''}</div>
+          <div class="sub" style="font-size:13px">Freezer has ${+(+f.serves).toFixed(2)} ${esc(f.unit||'')} of ${esc(f.name)}${f.frozenOn?` (frozen ${ageText(f.frozenOn)})`:''}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn small primary" onclick="fzUse('${k}','${f.id}')">✓ Yep, use from freezer</button><button class="btn small" onclick="fzDismiss('${k}')">✗ No, buy it</button></div></div>`; }).join('')}
+        ${usedRows.map(({k,f,i})=>`<div style="padding:8px 0;border-top:1px solid rgba(0,0,0,.06)"><div>✓ <b>${esc(i.name)}</b> is coming from the freezer, so it’s ticked off the list.</div>
+          <div class="sub" style="font-size:13px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:4px">Take it out of the freezer count? Now ${+(+f.serves).toFixed(2)} ${esc(f.unit||'')}
+          <button class="icon-btn" onclick="adjustFreezer('${f.id}',-1)" ${+f.serves<=0?'disabled':''} aria-label="One less ${esc(f.name)}">−</button><button class="btn small" onclick="fzDoneUsing('${k}')">Done</button></div></div>`).join('')}
+      </div>`; })()}
     ${list.length===0?`<p class="empty" style="margin-top:22px">No meals planned in these dates yet.</p>`:''}
     ${aisles.map(a=>`
       <div class="aisle">
