@@ -123,6 +123,8 @@
   .serves{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:28px}
   .serves .n{font-family:var(--serif);font-size:24px;font-weight:600;min-width:24px;text-align:center}
   .serves .cost{margin-left:auto;color:var(--accent);font-weight:500}
+  .mults{display:inline-flex;gap:6px;flex-wrap:wrap;margin-left:6px}
+  .mults.mini .optchip{padding:2px 8px;font-size:12px}
   .two-col{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr);gap:40px}
   @media (max-width:720px){.two-col{grid-template-columns:1fr;gap:28px}}
   .col-title{font-family:var(--serif);font-size:24px;font-weight:600;margin:0 0 10px}
@@ -464,6 +466,7 @@
   .style-pick button[aria-pressed="true"]{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
   .style-pick b{display:block;font-family:var(--serif);font-size:19px}
   [data-style="green"] .style-pick button{border-radius:0}
+  .scanbox{background:var(--card,#fff);border:1px dashed var(--line,#ddd);border-radius:14px;padding:12px 14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 </style>
 
 </head>
@@ -1357,10 +1360,13 @@ function renderDayOpts(dateISO){
     return `<button class="optchip ${on?'on':''}" aria-pressed="${on}" ${has?'disabled title="Remove what’s planned to hide this"':''} onclick="toggleDayOpt('${dateISO}','${m}')">${on?'✓':'+'} ${m}</button>`; }).join('')}</div>`;
 }
 function slotLabel(key){ const [d,m]=String(key).split('__'); if(!d||!m) return ''; return new Date(d+'T00:00:00').toLocaleDateString('en-AU',{weekday:'short'})+' '+m.toLowerCase(); }
-function serveControls(key,e){ return `
+function serveControls(key,e){ const rec = (!e.type || e.type==='recipe') && e.recipeId ? recipes.find(r=>r.id===e.recipeId) : null;
+  return `
   <button onclick="changeServ('${key}',-1)" class="icon-btn" style="width:22px;height:22px;font-size:12px" aria-label="Fewer serves">−</button>
   <span class="num">${e.servings} serve${e.servings>1?'s':''}</span>
-  <button onclick="changeServ('${key}',1)" class="icon-btn" style="width:22px;height:22px;font-size:12px" aria-label="More serves">+</button>`; }
+  <button onclick="changeServ('${key}',1)" class="icon-btn" style="width:22px;height:22px;font-size:12px" aria-label="More serves">+</button>
+  ${rec ? `<span class="mults mini" role="group" aria-label="Quick scale">${[[2,'2×'],[3,'3×'],[4,'4×']].map(([m,l])=>{ const n=Math.max(1,Math.round(rec.servings*m)); return `<button class="optchip ${e.servings===n?'on':''}" aria-pressed="${e.servings===n}" onclick="setServ('${key}',${n})">${l}</button>`; }).join('')}</span>` : ''}`; }
+function setServ(key, n){ const e = plan[key]; if(!e || n===e.servings) return; putPlan(key, {...e, servings:Math.max(1,n)}); }
 function renderEntry(key,e){
   const kind = e.type || 'recipe';
   const r = e.recipeId ? recipes.find(rc=>rc.id===e.recipeId) : null;
@@ -1593,6 +1599,8 @@ function renderRecipes(){
   <div class="toolbar">
     <button onclick="leaveForm('new-manual')" class="btn primary">New recipe</button>
     <button onclick="leaveForm('new-import')" class="btn">Paste a recipe</button>
+    <label class="btn" for="scanInput" style="cursor:pointer">📸 Scan a recipe</label>
+    <input id="scanInput" type="file" accept="image/*" multiple class="hidden" onchange="scanRecipe(this.files)">
     <input id="recipe-search" class="field search" type="search" placeholder="Search recipes or ingredients" value="${esc(state.recipeSearch)}" data-live-edit
       oninput="state.recipeSearch=this.value;document.getElementById('recipe-cards').innerHTML=renderRecipeCards()" onblur="afterLiveEdit()" aria-label="Search recipes">
   </div>
@@ -1627,15 +1635,70 @@ function renderImporter(){
   <button onclick="leaveForm(null)" class="back">← Recipes</button>
   <div class="form">
     <div>
-      <h2 class="serif" style="font-size:34px;font-weight:500;margin:0 0 6px">Paste a recipe</h2>
-      <p class="sub" style="margin:0">Paste the title, ingredients with amounts, and numbered steps. You can check and tidy it before saving.</p>
+      <h2 class="serif" style="font-size:34px;font-weight:500;margin:0 0 6px">${state.scanning || state.scanned ? 'Scan a recipe' : 'Paste a recipe'}</h2>
+      <p class="sub" style="margin:0">${state.scanned ? 'Here’s what the app read. Fix anything that looks wrong (especially numbers), then tap Continue.' : 'Paste the title, ingredients with amounts, and numbered steps. You can check and tidy it before saving.'}</p>
+    </div>
+    <div class="scanbox">
+      <label class="btn small" for="scanInput2" style="cursor:pointer">📸 ${state.scanned ? 'Scan more pages' : 'Scan a recipe instead'}</label>
+      <input id="scanInput2" type="file" accept="image/*" multiple class="hidden" onchange="scanRecipe(this.files, true)">
+      <span id="scan-status" class="sub" style="font-size:13px" role="status">${esc(state.scanStatus||'')}</span>
+      <p class="sub" style="font-size:12.5px;margin:6px 0 0">Tips: lay the page flat in good light, hold the phone straight above it, and include the title. You can choose several photos for recipes over two pages.</p>
     </div>
     <textarea id="importBox" rows="10" class="field" placeholder="Chicken Stir Fry&#10;500g chicken breast&#10;1 brown onion&#10;1. Slice chicken and vegetables.&#10;2. Cook in a hot pan.">${esc(state.importText)}</textarea>
     <div><button onclick="doParse()" class="btn primary">Continue</button></div>
   </div>`;
 }
+/* ---------- Scan a recipe: read the text from photos on the phone (Tesseract.js, free) ---------- */
+function loadScript(src){ return new Promise((ok,no)=>{ if(document.querySelector(`script[src="${src}"]`)) return ok(); const s=document.createElement('script'); s.src=src; s.onload=ok; s.onerror=no; document.head.appendChild(s); }); }
+// Make a photo easier to read: shrink or enlarge to a sensible size, greyscale, and stretch the contrast.
+function prepareImage(file){
+  return new Promise((ok, no) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const scale = Math.min(2200 / Math.max(img.width, img.height), 2.5), w = Math.round(img.width*scale), h = Math.round(img.height*scale);
+      const c = document.createElement('canvas'); c.width = w; c.height = h; const x = c.getContext('2d'); x.drawImage(img, 0, 0, w, h);
+      const d = x.getImageData(0, 0, w, h), a = d.data; let lo = 255, hi = 0;
+      for(let i=0;i<a.length;i+=4){ const g = 0.299*a[i]+0.587*a[i+1]+0.114*a[i+2]; a[i]=a[i+1]=a[i+2]=g; if(g<lo) lo=g; if(g>hi) hi=g; }
+      const r = Math.max(1, hi-lo); for(let i=0;i<a.length;i+=4){ const v = Math.max(0, Math.min(255, (a[i]-lo)*255/r)); a[i]=a[i+1]=a[i+2]=v; }
+      x.putImageData(d, 0, 0); URL.revokeObjectURL(url); ok(c);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); no(new Error('image')); };
+    img.src = url;
+  });
+}
+// Tidy common reading slips: joined-up hyphenation, stray symbols, fractions read as letters.
+function tidyOcr(t){
+  return t.replace(/\r/g,'').replace(/-\n(?=[a-z])/g,'').replace(/[|¦]/g,'').replace(/^\s*[•·●▪◦*+«»>~=©®e](?=\s)\s*/gm,'')
+    .replace(/\bth(s|sp)\b/gi,'tbsp').replace(/\bt(s|bs)p\b/gi, m => m.toLowerCase()==='tsp' ? 'tsp' : 'tbsp')
+    .replace(/(\d)\s*\/\s*(\d)/g,'$1/$2').replace(/\b1\/2\b/g,'½').replace(/\b1\/4\b/g,'¼').replace(/\b3\/4\b/g,'¾')
+    .replace(/(\d)\s?(g|kg|ml|mL|L)\b/g,'$1$2').replace(/\btbs\b/gi,'tbsp').replace(/[ \t]+/g,' ').replace(/\n{3,}/g,'\n\n').trim()
+    .split('\n').reduce((out, line) => {   // a numbered step that wrapped onto the next line
+      const prev = out[out.length-1], cur = line.trim();
+      if(prev && cur && /^\s*(\d+[.)]|step \d+)/i.test(prev) && !/[.!?:]$/.test(prev.trim()) && !/^(\d+[.)]|step \d+)/i.test(cur) && !/^(ingredients|method|directions|instructions|steps|serves|notes?)\b/i.test(cur)) out[out.length-1] = prev.trim() + ' ' + cur;
+      else out.push(line);
+      return out; }, []).join('\n');
+}
+async function scanRecipe(files, append){
+  files = [...(files||[])]; if(!files.length) return;
+  if(state.editingRecipe!=='new-import'){ state.importText=''; leaveForm('new-import'); }
+  state.scanning = true; const say = t => { state.scanStatus = t; const el = document.getElementById('scan-status'); if(el) el.textContent = t; };
+  say('Getting the reader ready… (the first time takes a little longer)'); render();
+  try{
+    await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js');
+    const worker = await Tesseract.createWorker('eng', 1, {logger: m => { if(m.status==='recognizing text') say(`Reading page ${state.scanPage||1} of ${files.length}… ${Math.round(m.progress*100)}%`); }});
+    const texts = [];
+    for(let i=0;i<files.length;i++){ state.scanPage = i+1; say(`Reading page ${i+1} of ${files.length}…`);
+      const canvas = await prepareImage(files[i]); const {data} = await worker.recognize(canvas); texts.push(tidyOcr(data.text)); }
+    await worker.terminate();
+    const text = texts.join('\n\n');
+    state.importText = append && state.importText ? state.importText + '\n\n' + text : text;
+    state.scanned = true; state.scanning = false; say(text.trim() ? `Read ${files.length} page${files.length>1?'s':''} ✓ Check it below.` : 'Couldn’t find any text. Try a closer, brighter photo.');
+  }catch(e){ state.scanning = false; say('Couldn’t read that photo. Check you’re online for the first scan, and try a brighter, straighter photo.'); }
+  render();
+  const box = document.getElementById('importBox'); if(box) box.focus();
+}
 function doParse(){
-  const text = document.getElementById('importBox').value;
+  const text = document.getElementById('importBox').value; state.scanned = false; state.scanStatus = '';
   state.importText = text;
   if(/^\s*https?:\/\/\S+\s*$/i.test(text)){
     state.parsedDraft = {id:'r'+Date.now(), title:'', author:'', sourceUrl:cleanUrl(text), time:'20 min', servings:4, categories:['Dinner'], ingredients:[{name:'',qty:'',unit:''}], steps:[''], photo:null};
@@ -1644,6 +1707,11 @@ function doParse(){
     render(); return;
   }
   const parsed = parseImport(text);
+  if(!parsed.time){
+    const mins = (label) => { const m = text.match(new RegExp(label + '[^0-9\\n]{0,15}(\\d+)\\s*(hours?|hrs?|h|minutes?|mins?|m)\\b', 'i')); return m ? (+m[1]) * (/^h/i.test(m[2]) ? 60 : 1) : 0; };
+    const total = mins('total') || (mins('prep') + mins('cook'));
+    if(total) parsed.time = total >= 60 ? `${Math.floor(total/60)} hr${total%60 ? ' ' + total%60 + ' min' : ''}` : `${total} min`;
+  }
   state.parsedDraft = {id:'r'+Date.now(), title:parsed.title, author:parsed.author, sourceUrl:parsed.sourceUrl, time:parsed.time||'', servings:parsed.servings||4, cupSize:guessCupSize(parsed.sourceUrl, text), categories:['Dinner'], ingredients:parsed.ingredients, steps:parsed.steps, photo:null};
   state.editingRecipe='new-manual'; render();
 }
@@ -1911,13 +1979,13 @@ function renderRecipeDetail(id){
   <div class="serves">
     <span class="label">Serves</span>
     <button onclick="setViewServ('${r.id}',${serv-1})" class="icon-btn" aria-label="Fewer serves">−</button>
-    <span class="n num">${serv}</span>
+    <button class="n num" style="border:0;background:none;cursor:pointer;color:inherit;text-decoration:underline dotted" onclick="customServ('${r.id}',${serv})" aria-label="Type an exact number of serves">${serv}</button>
     <button onclick="setViewServ('${r.id}',${serv+1})" class="icon-btn" aria-label="More serves">+</button>
     ${canMetric?`<span class="seg" role="group" aria-label="Units"><button class="${metric?'':'on'}" onclick="setSetting('metricView',false)">As written</button><button class="${metric?'on':''}" onclick="setSetting('metricView',true)">Metric</button></span>`:''}
     ${state.fzFor===r.id
       ? `<span class="fz-inline"><label for="fz-serves">Serves to freeze</label><input id="fz-serves" class="field" type="number" min="1" value="${serv}"><button class="btn small primary" onclick="addRecipeToFreezer('${r.id}')">Add to freezer</button><button class="textlink" onclick="state.fzFor=null;render()">Cancel</button></span>`
       : `<button class="btn small" onclick="state.fzFor='${r.id}';render()">🧊 Add to freezer</button>`}
-  </div>
+  <span class="mults" role="group" aria-label="Quick scale">${[[0.5,'½'],[1,'1×'],[2,'2×'],[3,'3×'],[4,'4×']].map(([m,l])=>{ const n=Math.max(1,Math.round(r.servings*m)); return `<button class="optchip ${serv===n?'on':''}" aria-pressed="${serv===n}" onclick="setViewServ('${r.id}',${n})">${l}</button>`; }).join('')}</span></div>
   ${metric?`<div class="conv-note">
     <span class="seg" role="group" aria-label="Cup size" style="margin-right:8px"><button class="${sys==='au'?'on':''}" onclick="setCupSize('${r.id}','au')">Australian cups</button><button class="${sys==='us'?'on':''}" onclick="setCupSize('${r.id}','us')">US cups</button></span>
     ${sys==='us'?'US recipe: cups are 240 mL, and a US tablespoon is 15 mL (use 3 teaspoons; an Australian tablespoon is 20 mL).':'Australian cups are 250 mL.'} Weights marked ≈ are approximate, as they depend on how the cup is filled.</div>`:''}
@@ -1935,6 +2003,7 @@ function renderRecipeDetail(id){
   </div>`;
 }
 function setViewServ(id,n){ state.viewServ={id, n:Math.max(1,n)}; render(); }
+function customServ(id, cur){ const v = prompt('How many serves?', cur); const n = parseInt(v,10); if(n>0) setViewServ(id, n); }
 function setCupSize(id, size){ const r=recipes.find(x=>x.id===id); if(r && r.cupSize!==size) putRecipe({...r, cupSize:size}); render(); }
 function addRecipeToFreezer(id){
   const r=recipes.find(x=>x.id===id); if(!r) return;
@@ -2090,6 +2159,22 @@ function renderExportTip(){
     <button onclick="state.exportMsg=null;render()" class="textlink" style="margin-top:8px">Dismiss</button>
   </div>`;
 }
+/* Send this shopping list to Our List (shared groceries list, sorted into its aisles).
+   Re-sending the same week updates the same items rather than doubling up. */
+const OL_AISLE = [['Fruit & veg',/produce|fruit|veg/i],['Meat & seafood',/meat|seafood|fish|deli/i],['Dairy & eggs',/dairy|egg|chilled|fridge/i],['Bakery',/bak|bread/i],['Frozen',/frozen/i],['Drinks',/drink/i],['Snacks',/snack/i],['Pantry',/pantry|spice|condiment|tin|can|grain|baking|international|oil|sauce/i]];
+async function sendToOurList(){
+  const dates = shopDates ? shopDates() : weekDates();
+  const list = buildGroceryList(dates).filter(i => !i.pantry && !groceryChecks[checkKey(i)]);
+  if(!list.length){ showError('Nothing to send: everything’s ticked or in the pantry.'); return; }
+  if(isDemo()){ state.info = `In the real app, ${list.length} items would go to Our List.`; render(); return; }
+  const slug = t => String(t).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  const by = (auth.email||'').split('@')[0];
+  try{
+    await Promise.all(list.map(i => { const a = (OL_AISLE.find(([n,re]) => re.test(i.aisle||'')) || ['Other'])[0];
+      return DATA.setShopItem({id:'mp-'+state.shopFrom+'-'+slug(i.name), text:i.name, qty:i.amount ? String(i.amount).trim() : '', list:'groceries', aisle:a, need:'now', done:false, at:Date.now(), by, from:'Meal planner'}); }));
+    state.info = `Sent ${list.length} item${list.length===1?'':'s'} to Our List 🛒`; render();
+  }catch(e){ showError('Couldn’t send to Our List. Check you’re online and signed in.'); }
+}
 function renderGrocery(){
   const dates = shopDates();
   const list = buildGroceryList(dates);
@@ -2114,6 +2199,7 @@ function renderGrocery(){
     <div class="sheet-head">
       <div><div class="label">${fmtShort(new Date(state.shopFrom+'T00:00:00'))} – ${fmtShort(new Date(state.shopTo+'T00:00:00'))}</div><h2>${heading}</h2></div>
       <label class="chip"><input type="checkbox" id="combine-toggle" ${settings.combine?'checked':''} onchange="setSetting('combine',this.checked)"> Combine similar items</label>
+      <button class="btn small primary" onclick="sendToOurList()">➕ Send to Our List</button>
     </div>
     <div class="aisle extras">
       <div class="label">Added by you</div>

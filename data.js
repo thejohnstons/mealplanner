@@ -105,6 +105,8 @@ if(!cfg.apiKey || String(cfg.apiKey).includes('PASTE')){
     deleteRecipe(id){ return deleteDoc(ref('recipes', id)); },
     setPlan(key, entry){ return setDoc(ref('plan', key), entry); },
     deletePlan(key){ return deleteDoc(ref('plan', key)); },
+    // Our List (the shopping app) shares households/johnston/shop_items
+    setShopItem(item){ return setDoc(ref('shop_items', item.id), item); },
     setCheck(from, to, item, val){ return setDoc(ref('checks', from+'_'+to), {items:{[item]:!!val}}, {merge:true}); },
     setPhoto(id, data, recipeId){ return setDoc(ref('photos', id), {data, recipeId}); },
     deletePhoto(id){ return deleteDoc(ref('photos', id)); },
