@@ -1209,7 +1209,8 @@ function buildGroceryList(dates){
 }
 
 /* ---------- RENDER ---------- */
-function render(){
+function render(){ renderMain(); scheduleOurListSync(); }
+function renderMain(){
   const app = document.getElementById('app');
   if(window.DATA && auth.status==='signedIn') DATA.watchWindow(state.weekStart, isoDate(addDays(new Date(state.weekStart+'T00:00:00'),6)), state.shopFrom, state.shopTo);
   if(!['signedIn','demo'].includes(auth.status)){ app.innerHTML = renderGate(); return; }
@@ -2162,6 +2163,34 @@ function renderExportTip(){
 /* Send this shopping list to Our List (shared groceries list, sorted into its aisles).
    Re-sending the same week updates the same items rather than doubling up. */
 const OL_AISLE = [['Fruit & veg',/produce|fruit|veg/i],['Meat & seafood',/meat|seafood|fish|deli/i],['Dairy & eggs',/dairy|egg|chilled|fridge/i],['Bakery',/bak|bread/i],['Frozen',/frozen/i],['Drinks',/drink/i],['Snacks',/snack/i],['Pantry',/pantry|spice|condiment|tin|can|grain|baking|international|oil|sauce/i]];
+/* Automatic: whenever the plan or ticks change, Our List's groceries are brought up to date
+   (a couple of seconds after the last change). Ticked or pantry items are left off; items no
+   longer needed are removed, unless they've already been ticked in Our List. */
+let olTimer = null, olLastSig = null;
+function scheduleOurListSync(){
+  if(isDemo() || auth.status!=='signedIn' || !loaded.recipes || !loaded.plan) return;
+  clearTimeout(olTimer); olTimer = setTimeout(syncOurList, 2500);
+}
+async function syncOurList(){
+  const slug = t => String(t).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  const list = buildGroceryList(shopDates()).filter(i => !i.pantry && !groceryChecks[checkKey(i)]);
+  const want = new Map(list.map(i => ['mp-'+slug(i.name), i]));
+  const sig = [...want.entries()].map(([k,i]) => k+':'+(i.amount||'')).sort().join('|');
+  if(sig === olLastSig) return;
+  try{
+    const existing = await DATA.listMealShopItems(), byId = new Map(existing.map(e => [e.id, e]));
+    const by = (auth.email||'').split('@')[0], jobs = [];
+    want.forEach((i, id) => { const ex = byId.get(id), qty = i.amount ? String(i.amount).trim() : '';
+      if(ex && ex.done) return;                                   // already bought: leave it ticked
+      if(ex && ex.text===i.name && (ex.qty||'')===qty) return;    // unchanged
+      const a = (OL_AISLE.find(([n,re]) => re.test(i.aisle||'')) || ['Other'])[0];
+      jobs.push(DATA.setShopItem({id, text:i.name, qty, list:'groceries', aisle:a, need:'now', done:false, at:Date.now(), by, from:'Meal planner'})); });
+    existing.forEach(e => { if(!want.has(e.id) && !e.done) jobs.push(DATA.deleteShopItem(e.id)); });   // no longer needed
+    await Promise.all(jobs);
+    olLastSig = sig; state.olStatus = `Synced to Our List · ${want.size} item${want.size===1?'':'s'}`;
+    const chip = [...document.querySelectorAll('.chip')].find(c => c.textContent.includes('Our List')); if(chip) chip.textContent = '🛒 ' + state.olStatus;
+  }catch(e){ state.olStatus = 'Couldn’t reach Our List just now'; }
+}
 async function sendToOurList(){
   const dates = shopDates ? shopDates() : weekDates();
   const list = buildGroceryList(dates).filter(i => !i.pantry && !groceryChecks[checkKey(i)]);
@@ -2199,7 +2228,7 @@ function renderGrocery(){
     <div class="sheet-head">
       <div><div class="label">${fmtShort(new Date(state.shopFrom+'T00:00:00'))} – ${fmtShort(new Date(state.shopTo+'T00:00:00'))}</div><h2>${heading}</h2></div>
       <label class="chip"><input type="checkbox" id="combine-toggle" ${settings.combine?'checked':''} onchange="setSetting('combine',this.checked)"> Combine similar items</label>
-      <button class="btn small primary" onclick="sendToOurList()">➕ Send to Our List</button>
+      <span class="chip" title="This list goes to Our List automatically">🛒 ${esc(state.olStatus || 'Syncs to Our List automatically')}</span>
     </div>
     <div class="aisle extras">
       <div class="label">Added by you</div>

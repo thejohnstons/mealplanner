@@ -107,6 +107,8 @@ if(!cfg.apiKey || String(cfg.apiKey).includes('PASTE')){
     deletePlan(key){ return deleteDoc(ref('plan', key)); },
     // Our List (the shopping app) shares households/johnston/shop_items
     setShopItem(item){ return setDoc(ref('shop_items', item.id), item); },
+    async listMealShopItems(){ const snap = await getDocs(query(col('shop_items'), where('from','==','Meal planner'))); return snap.docs.map(d => ({id:d.id, ...d.data()})); },
+    deleteShopItem(id){ return deleteDoc(ref('shop_items', id)); },
     setCheck(from, to, item, val){ return setDoc(ref('checks', from+'_'+to), {items:{[item]:!!val}}, {merge:true}); },
     setPhoto(id, data, recipeId){ return setDoc(ref('photos', id), {data, recipeId}); },
     deletePhoto(id){ return deleteDoc(ref('photos', id)); },
